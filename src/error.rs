@@ -108,4 +108,7 @@ pub enum ContractError {
 
     #[error("Invalid query")]
     InvalidQuery {},
+
+    #[error("Too many tickets")]
+    TooManyTickets {},
 }
