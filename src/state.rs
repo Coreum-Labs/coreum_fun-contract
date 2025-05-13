@@ -104,3 +104,12 @@ pub fn all_tickets_burned(storage: &dyn Storage) -> StdResult<bool> {
     let total_burned = TOTAL_TICKETS_BURNED.load(storage)?;
     Ok(total_sold == total_burned)
 }
+
+pub fn calculate_win_chance(user_tickets: Uint128, total_tickets_sold: Uint128) -> String {
+    if total_tickets_sold.is_zero() || user_tickets.is_zero() {
+        return "0.00%".to_string();
+    }
+
+    let win_chance = user_tickets.u128() as f64 / total_tickets_sold.u128() as f64 * 100.0;
+    format!("{:.2}%", win_chance)
+}
