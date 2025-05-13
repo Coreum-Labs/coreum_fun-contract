@@ -34,6 +34,13 @@ pub const TOTAL_TICKETS_SOLD: Item<Uint128> = Item::new("total_tickets_sold");
 pub const TOTAL_TICKETS_BURNED: Item<Uint128> = Item::new("total_tickets_burned");
 pub const CLAIMS: Map<&Addr, Uint128> = Map::new("claims"); // Address -> Amount claimed
 
+// Initialize the storage
+pub fn initialize_storage(storage: &mut dyn Storage) -> StdResult<()> {
+    TOTAL_TICKETS_SOLD.save(storage, &Uint128::zero())?;
+    TOTAL_TICKETS_BURNED.save(storage, &Uint128::zero())?;
+    Ok(())
+}
+
 // Helper functions to work with state
 
 pub fn increment_tickets_sold(storage: &mut dyn Storage, amount: Uint128) -> StdResult<Uint128> {
