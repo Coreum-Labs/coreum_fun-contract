@@ -36,6 +36,7 @@ coreum-wasm-sdk = "1.2.1"
 cosmwasm-schema = "2.2.0"
 cosmwasm-std = { version = "2.2.0", features = [
   "cosmwasm_1_4",
+  "staking",
   # Enable this if you only deploy to chains that have CosmWasm 2.0 or higher
   # "cosmwasm_2_0",
   # Or this if you only deploy to chains that have CosmWasm 2.1 or higher
