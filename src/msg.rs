@@ -44,10 +44,6 @@ pub enum QueryMsg {
     #[returns(BalanceResponse)]
     Balance { account: String },
 
-    /// Get the accumulated rewards
-    #[returns(AccumulatedRewardsResponse)]
-    AccumulatedRewards {},
-
     /// Get all participants in the lottery
     #[returns(ParticipantsResponse)]
     GetParticipants {},
