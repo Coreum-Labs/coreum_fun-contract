@@ -199,7 +199,11 @@ pub fn execute_buy_ticket(
     let mint_msg = MsgMint {
         sender: env.contract.address.to_string(),
         coin: Some(Coin {
-            denom: config.ticket_token.clone(),
+            denom: format!(
+                "u{}-{}",
+                config.ticket_token.to_lowercase(),
+                env.contract.address
+            ),
             amount: (number_of_tickets.pow(TICKET_PRECISION)).to_string(),
         }),
         recipient: info.sender.to_string(),
