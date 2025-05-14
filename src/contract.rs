@@ -353,11 +353,30 @@ pub fn execute_burn_tickets(
 ) -> Result<Response, ContractError> {
     // Step 1: Verify the draw is in the correct state
     let config = CONFIG.load(deps.storage)?;
-    if config.draw_state != DrawState::UndelegationCompletedTokensCanBeBurned {
+    if config.draw_state != DrawState::WinnerSelectedUndelegationInProcess
+        && config.draw_state != DrawState::UndelegationCompletedTokensCanBeBurned
+    {
         return Err(ContractError::InvalidDrawState {
             expected: DrawState::UndelegationCompletedTokensCanBeBurned,
             actual: config.draw_state,
         });
+    }
+
+    // Check if undelegation period is complete and update state if needed
+    if config.draw_state == DrawState::WinnerSelectedUndelegationInProcess {
+        if let Some(undelegation_block) = config.undelegation_done_future_block {
+            if env.block.height >= undelegation_block {
+                CONFIG.update(deps.storage, |mut config| -> StdResult<_> {
+                    config.draw_state = DrawState::UndelegationCompletedTokensCanBeBurned;
+                    Ok(config)
+                })?;
+            } else {
+                return Err(ContractError::UndelegationPeriodNotCompleted {
+                    current_block: env.block.height,
+                    undelegation_block,
+                });
+            }
+        }
     }
 
     // Step 2: Verify the user has enough tickets
