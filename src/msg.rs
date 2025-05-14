@@ -90,12 +90,6 @@ pub enum QueryMsg {
     /// Get total claims made by users
     #[returns(ClaimsResponse)]
     GetClaims { address: Option<String> },
-
-    /// Get token holders from Coreum Asset FT module
-    #[returns(TokenHoldersResponse)]
-    GetTokenHolders {
-        pagination: Option<PaginationParams>,
-    },
 }
 
 /// Migration message for contract upgrades
@@ -150,11 +144,6 @@ pub struct TicketsSoldResponse {
 #[cw_serde]
 pub struct BonusRewardsResponse {
     pub bonus_rewards: Uint128,
-}
-
-#[cw_serde]
-pub struct AccumulatedRewardsResponse {
-    pub accumulated_rewards: Uint128,
 }
 
 #[cw_serde]
