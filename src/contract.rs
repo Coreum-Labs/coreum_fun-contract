@@ -271,6 +271,7 @@ pub fn execute_select_winner_and_send_funds(
     }
 
     // Step 5: Query accumulated rewards
+    //TODO: this is not correct, we need to query the rewards from the validator
     let delegations = deps
         .querier
         .query_all_delegations(env.contract.address.clone())?;
@@ -279,6 +280,7 @@ pub fn execute_select_winner_and_send_funds(
 
     // Calculate the rewards by comparing delegation amount with original stake:
     // rewards = delegation_amount - staked_amount
+    //TODO: this is not correct, we cannot use the delegation amount, we need to query the rewards from the validator
     let mut rewards_amount = Uint128::zero();
     for delegation in delegations.iter() {
         if delegation.amount.amount > staked_amount {
@@ -295,9 +297,6 @@ pub fn execute_select_winner_and_send_funds(
         config.draw_state = DrawState::WinnerSelectedUndelegationInProcess;
         Ok(config)
     })?;
-
-    //Step 6: Check the accumulated rewards
-    //Step 7: Claim the rewards from the validator
 
     // Step 8: Send the rewards to the winner
     let mut messages: Vec<CosmosMsg> = vec![];
@@ -374,7 +373,8 @@ pub fn execute_burn_tickets(
     }
 
     // Step 3: Calculate the refund amount (original investment)
-    let refund_amount: Uint128 = number_of_tickets * config.ticket_price;
+    //We use the users_tickets instead of the requested number of tickets
+    let refund_amount: Uint128 = user_tickets * config.ticket_price;
 
     // Step 4: Burn the TICKET tokens
     let burn_msg = MsgBurn {
