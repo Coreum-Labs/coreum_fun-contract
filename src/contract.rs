@@ -69,7 +69,7 @@ pub fn instantiate(
         max_tickets_per_user: msg.max_tickets_per_user,
         draw_state: DrawState::TicketSalesOpen,
         winner: None,
-        undelegation_done_future_block: None,
+        undelegation_done_timestamp: None,
         accumulated_rewards: Uint128::zero(),
         bonus_rewards: Uint128::zero(),
     };
@@ -132,6 +132,9 @@ pub fn execute(
         }
         ExecuteMsg::SendFunds { recipient, amount } => {
             execute_send_funds(deps, info, recipient, amount)
+        }
+        ExecuteMsg::SetUndelegationTimestamp { timestamp } => {
+            execute_set_undelegation_timestamp(deps, env, info, timestamp)
         }
     }
 }
@@ -316,15 +319,16 @@ pub fn execute_select_winner_and_send_funds(
         messages.push(CosmosMsg::Staking(undelegate_msg));
     }
 
-    // Step 10: Calculate the block at which the undelegation will be completed
-    // 7 days (in blocks) for Coreum
-    //TODO: make this real calculation
-    let undelegation_period_blocks = 302400; // ~7 days at 1.1 second blocks
-    let undelegation_done_block = env.block.height + undelegation_period_blocks;
+    // Step 10: Calculate the timestamp at which the undelegation will be completed
+    // Coreum has 7 days undelegation period
+    const SECONDS_PER_DAY: u64 = 24 * 60 * 60;
+    const UNDELEGATION_DAYS: u64 = 7;
+    let undelegation_period_seconds: u64 = SECONDS_PER_DAY * UNDELEGATION_DAYS;
+    let undelegation_done_timestamp = env.block.time.seconds() + undelegation_period_seconds;
 
-    // Step 10: Update the contract state with the future block
+    // Step 10: Update the contract state with the future timestamp
     CONFIG.update(deps.storage, |mut config| -> StdResult<_> {
-        config.undelegation_done_future_block = Some(undelegation_done_block);
+        config.undelegation_done_timestamp = Some(undelegation_done_timestamp);
         Ok(config)
     })?;
 
@@ -334,8 +338,8 @@ pub fn execute_select_winner_and_send_funds(
         ("winner", &winner_addr.to_string()),
         ("rewards_amount", &total_rewards.to_string()),
         (
-            "undelegation_done_block",
-            &undelegation_done_block.to_string(),
+            "undelegation_done_timestamp",
+            &undelegation_done_timestamp.to_string(),
         ),
         ("new_state", "WinnerSelectedUndelegationInProcess"),
     ]))
@@ -360,16 +364,16 @@ pub fn execute_burn_tickets(
 
     // Check if undelegation period is complete and update state if needed
     if config.draw_state == DrawState::WinnerSelectedUndelegationInProcess {
-        if let Some(undelegation_block) = config.undelegation_done_future_block {
-            if env.block.height >= undelegation_block {
+        if let Some(undelegation_timestamp) = config.undelegation_done_timestamp {
+            if env.block.time.seconds() >= undelegation_timestamp {
                 CONFIG.update(deps.storage, |mut config| -> StdResult<_> {
                     config.draw_state = DrawState::UndelegationCompletedTokensCanBeBurned;
                     Ok(config)
                 })?;
             } else {
                 return Err(ContractError::UndelegationPeriodNotCompleted {
-                    current_block: env.block.height,
-                    undelegation_block,
+                    current_timestamp: env.block.time.seconds(),
+                    undelegation_timestamp,
                 });
             }
         }
@@ -528,6 +532,39 @@ pub fn execute_send_funds(
         .add_attribute("amount", &amount.to_string()))
 }
 
+pub fn execute_set_undelegation_timestamp(
+    deps: DepsMut,
+    _env: Env,
+    info: MessageInfo,
+    timestamp: u64,
+) -> Result<Response, ContractError> {
+    // Verify the caller is the owner
+    let config = CONFIG.load(deps.storage)?;
+    if info.sender != config.owner {
+        return Err(ContractError::Unauthorized {});
+    }
+
+    // Verify the draw is in the correct state
+    if config.draw_state != DrawState::WinnerSelectedUndelegationInProcess {
+        return Err(ContractError::InvalidDrawState {
+            expected: DrawState::WinnerSelectedUndelegationInProcess,
+            actual: config.draw_state,
+        });
+    }
+
+    // Update the timestamp
+    CONFIG.update(deps.storage, |mut config| -> StdResult<_> {
+        config.undelegation_done_timestamp = Some(timestamp);
+        Ok(config)
+    })?;
+
+    // Return success response
+    Ok(Response::new().add_attributes(vec![
+        ("action", "set_undelegation_timestamp"),
+        ("timestamp", &timestamp.to_string()),
+    ]))
+}
+
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
@@ -623,7 +660,7 @@ fn query_current_state(deps: Deps) -> StdResult<CurrentStateResponse> {
 
     Ok(CurrentStateResponse {
         state: config.draw_state,
-        undelegation_done_block: config.undelegation_done_future_block,
+        undelegation_done_timestamp: config.undelegation_done_timestamp,
     })
 }
 

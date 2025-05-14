@@ -14,18 +14,18 @@ pub enum DrawState {
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct Config {
-    pub owner: Addr,                                 // Contract owner
-    pub ticket_token: String,                        // Denom of the TICKET token
-    pub core_denom: String,                          // Denom of CORE token (ucore)
-    pub validator_address: String,                   // Coreum Labs validator address
-    pub total_tickets: Uint128,                      // Total number of tickets available
-    pub max_tickets_per_user: Uint128,               // Maximum number of tickets per user
-    pub ticket_price: Uint128,                       // Price per ticket in CORE
-    pub draw_state: DrawState,                       // Current state of the draw
-    pub winner: Option<Addr>,                        // Winner address (if selected)
-    pub undelegation_done_future_block: Option<u64>, // Block at which undelegation will complete
-    pub accumulated_rewards: Uint128,                // Total rewards accumulated
-    pub bonus_rewards: Uint128,                      // Additional bonus rewards
+    pub owner: Addr,                              // Contract owner
+    pub ticket_token: String,                     // Denom of the TICKET token
+    pub core_denom: String,                       // Denom of CORE token (ucore)
+    pub validator_address: String,                // Coreum Labs validator address
+    pub total_tickets: Uint128,                   // Total number of tickets available
+    pub max_tickets_per_user: Uint128,            // Maximum number of tickets per user
+    pub ticket_price: Uint128,                    // Price per ticket in CORE
+    pub draw_state: DrawState,                    // Current state of the draw
+    pub winner: Option<Addr>,                     // Winner address (if selected)
+    pub undelegation_done_timestamp: Option<u64>, // Timestamp at which undelegation will complete
+    pub accumulated_rewards: Uint128,             // Total rewards accumulated
+    pub bonus_rewards: Uint128,                   // Additional bonus rewards
 }
 
 // Key storage items

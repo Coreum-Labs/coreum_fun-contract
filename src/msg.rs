@@ -35,6 +35,9 @@ pub enum ExecuteMsg {
 
     /// Send funds to a recipient
     SendFunds { recipient: String, amount: Uint128 },
+
+    /// Manually set the undelegation timestamp (admin only)
+    SetUndelegationTimestamp { timestamp: u64 },
 }
 
 #[cw_serde]
@@ -132,7 +135,7 @@ pub struct WinnerResponse {
 #[cw_serde]
 pub struct CurrentStateResponse {
     pub state: DrawState,
-    pub undelegation_done_block: Option<u64>,
+    pub undelegation_done_timestamp: Option<u64>,
 }
 
 #[cw_serde]
