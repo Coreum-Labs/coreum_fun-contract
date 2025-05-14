@@ -1,6 +1,7 @@
 use cosmwasm_std::{
-    entry_point, to_json_binary, Addr, BankMsg, Binary, Coin as CosmosCoin, CosmosMsg, Deps,
-    DepsMut, Empty, Env, MessageInfo, Order, Response, StakingMsg, StdResult, Uint128,
+    entry_point, to_json_binary, Addr, BankMsg, Binary, Coin as CosmosCoin, CosmosMsg,
+    DelegationTotalRewardsResponse, Deps, DepsMut, Empty, Env, MessageInfo, Order, QueryRequest,
+    Response, StakingMsg, StakingQuery, StdResult, Uint128,
 };
 use cw2::set_contract_version;
 use std::str::FromStr;
@@ -271,29 +272,17 @@ pub fn execute_select_winner_and_send_funds(
     }
 
     // Step 5: Query accumulated rewards
-    //TODO: this is not correct, we need to query the rewards from the validator
-    let delegations = deps
-        .querier
-        .query_all_delegations(env.contract.address.clone())?;
-
-    let staked_amount = get_draft_tvl(deps.storage)?;
+    let accumulated_rewards = query_accumulated_rewards(deps.as_ref(), &env)?;
 
     // Calculate the rewards by comparing delegation amount with original stake:
     // rewards = delegation_amount - staked_amount
-    //TODO: this is not correct, we cannot use the delegation amount, we need to query the rewards from the validator
-    let mut rewards_amount = Uint128::zero();
-    for delegation in delegations.iter() {
-        if delegation.amount.amount > staked_amount {
-            rewards_amount += delegation.amount.amount - staked_amount;
-        }
-    }
 
-    let total_rewards = rewards_amount + config.bonus_rewards;
+    let total_rewards = accumulated_rewards.accumulated_rewards + config.bonus_rewards;
 
     // Step 6: Set the winner address in the contract state
     CONFIG.update(deps.storage, |mut config| -> StdResult<_> {
         config.winner = Some(winner_addr.clone());
-        config.accumulated_rewards = rewards_amount;
+        config.accumulated_rewards = accumulated_rewards.accumulated_rewards;
         config.draw_state = DrawState::WinnerSelectedUndelegationInProcess;
         Ok(config)
     })?;
@@ -313,6 +302,9 @@ pub fn execute_select_winner_and_send_funds(
     }
 
     // Step 9: Start the undelegation process for all the tokens
+    let delegations = deps
+        .querier
+        .query_all_delegations(winner_addr.to_string())?;
     for delegation in delegations {
         let undelegate_msg = StakingMsg::Undelegate {
             validator: delegation.validator,
@@ -321,8 +313,9 @@ pub fn execute_select_winner_and_send_funds(
         messages.push(CosmosMsg::Staking(undelegate_msg));
     }
 
-    // Step 9: Calculate the block at which the undelegation will be completed
+    // Step 10: Calculate the block at which the undelegation will be completed
     // 7 days (in blocks) for Coreum
+    //TODO: make this real calculation
     let undelegation_period_blocks = 302400; // ~7 days at 1.1 second blocks
     let undelegation_done_block = env.block.height + undelegation_period_blocks;
 
@@ -383,7 +376,6 @@ pub fn execute_burn_tickets(
     let balance = query_ticket_balance(deps.as_ref(), info.sender.to_string())?;
     let user_tickets = Uint128::from_str(&balance.balance)?;
 
-    //TODO: might be an error depending on the precision of the token
     if user_tickets < number_of_tickets.pow(TICKET_PRECISION) {
         return Err(ContractError::NotEnoughTickets {
             requested: number_of_tickets,
@@ -537,13 +529,14 @@ pub fn execute_send_funds(
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
         QueryMsg::Balance { account } => to_json_binary(&query_ticket_balance(deps, account)?),
-        QueryMsg::AccumulatedRewards {} => to_json_binary(&query_accumulated_rewards(deps)?),
         QueryMsg::GetParticipants {} => to_json_binary(&query_participants(deps)?),
         QueryMsg::GetWinner {} => to_json_binary(&query_winner(deps)?),
         QueryMsg::GetCurrentState {} => to_json_binary(&query_current_state(deps)?),
         QueryMsg::GetNumberOfTicketsSold {} => to_json_binary(&query_number_of_tickets_sold(deps)?),
         QueryMsg::GetBonusRewards {} => to_json_binary(&query_bonus_rewards(deps)?),
-        QueryMsg::GetAccumulatedRewards {} => to_json_binary(&query_accumulated_rewards(deps)?),
+        QueryMsg::GetAccumulatedRewards {} => {
+            to_json_binary(&query_accumulated_rewards(deps, &_env)?)
+        }
         QueryMsg::GetDraftTvl {} => to_json_binary(&query_draft_tvl(deps)?),
         QueryMsg::GetTicketHolders {} => to_json_binary(&query_ticket_holders(deps)?),
         QueryMsg::GetUserNumberOfTickets { address } => {
@@ -559,12 +552,26 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
 
 // Query functions
 
-// fn query_accumulated_rewards(deps: Deps) -> StdResult<AccumulatedRewardsResponse> {
-//     let rewards = Querier(deps.querier)?;
-//     Ok(AccumulatedRewardsResponse {
-//         accumulated_rewards: rewards.into_iter().map(|d| d.amount).sum(),
-//     })
-// }
+fn query_accumulated_rewards(deps: Deps, env: &Env) -> StdResult<AccumulatedRewardsResponse> {
+    let config = CONFIG.load(deps.storage)?;
+    let coreum_labs_validator = config.validator_address;
+    let rewards = deps
+        .querier
+        .query_delegation_rewards(env.contract.address.to_string(), coreum_labs_validator)?;
+    let mut accumulated_rewards = Uint128::zero();
+    for dec_coin in rewards {
+        if dec_coin.denom == COREUM_DENOM {
+            accumulated_rewards += dec_coin
+                .amount
+                .to_uint_floor()
+                .try_into()
+                .unwrap_or(Uint128::zero());
+        }
+    }
+    Ok(AccumulatedRewardsResponse {
+        accumulated_rewards,
+    })
+}
 
 fn query_ticket_balance(deps: Deps, account: String) -> StdResult<QueryBalanceResponse> {
     let config = CONFIG.load(deps.storage)?;
@@ -633,14 +640,6 @@ fn query_bonus_rewards(deps: Deps) -> StdResult<BonusRewardsResponse> {
 
     Ok(BonusRewardsResponse {
         bonus_rewards: config.bonus_rewards,
-    })
-}
-
-fn query_accumulated_rewards(deps: Deps) -> StdResult<AccumulatedRewardsResponse> {
-    let config = CONFIG.load(deps.storage)?;
-
-    Ok(AccumulatedRewardsResponse {
-        accumulated_rewards: config.accumulated_rewards,
     })
 }
 
