@@ -1,4 +1,5 @@
 use crate::state::DrawState;
+use coreum_wasm_sdk::types::cosmos::base::v1beta1::Coin;
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{Addr, Uint128};
 
@@ -97,6 +98,10 @@ pub enum QueryMsg {
     /// Get total claims made by users
     #[returns(ClaimsResponse)]
     GetClaims { address: Option<String> },
+
+    /// Get delegated amount
+    #[returns(DelegatedAmountResponse)]
+    GetDelegatedAmount {},
 }
 
 /// Migration message for contract upgrades
@@ -221,4 +226,9 @@ pub struct TokenHolder {
 pub struct PaginationResponse {
     pub next_key: Option<String>,
     pub total: Option<u64>,
+}
+
+#[cw_serde]
+pub struct DelegatedAmountResponse {
+    pub amount: Coin,
 }

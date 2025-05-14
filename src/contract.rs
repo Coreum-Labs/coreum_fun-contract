@@ -1,3 +1,4 @@
+use coreum_wasm_sdk::types::cosmos::staking::v1beta1::DelegationResponse;
 use cosmwasm_std::{
     entry_point, to_json_binary, Addr, BankMsg, Binary, Coin as CosmosCoin, CosmosMsg, Deps,
     DepsMut, Empty, Env, MessageInfo, Order, Response, StakingMsg, StdResult, Uint128,
@@ -10,9 +11,10 @@ use std::str::FromStr;
 use crate::error::ContractError;
 use crate::msg::{
     AccumulatedRewardsResponse, BonusRewardsResponse, ClaimInfo, ClaimsResponse,
-    CurrentStateResponse, DraftTvlResponse, ExecuteMsg, InstantiateMsg, MigrateMsg,
-    ParticipantInfo, ParticipantsResponse, QueryMsg, TicketHoldersResponse, TicketsSoldResponse,
-    TotalBurnedResponse, UserTicketsResponse, UserWinChanceResponse, WinnerResponse,
+    CurrentStateResponse, DelegatedAmountResponse, DraftTvlResponse, ExecuteMsg, InstantiateMsg,
+    MigrateMsg, ParticipantInfo, ParticipantsResponse, QueryMsg, TicketHoldersResponse,
+    TicketsSoldResponse, TotalBurnedResponse, UserTicketsResponse, UserWinChanceResponse,
+    WinnerResponse,
 };
 use crate::state::{
     all_tickets_burned, calculate_win_chance, decrease_ticket_holder, get_draft_tvl,
@@ -648,6 +650,7 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
         }
         QueryMsg::GetTotalTicketsBurned {} => to_json_binary(&query_total_tickets_burned(deps)?),
         QueryMsg::GetClaims { address } => to_json_binary(&query_claims(deps, address)?),
+        QueryMsg::GetDelegatedAmount {} => to_json_binary(&query_delegated_amount(deps, &_env)?),
     }
 }
 
@@ -848,6 +851,28 @@ fn query_claims(deps: Deps, address: Option<String>) -> StdResult<ClaimsResponse
         claims,
         total_claimed,
     })
+}
+
+fn query_delegated_amount(deps: Deps, env: &Env) -> StdResult<DelegatedAmountResponse> {
+    let config = CONFIG.load(deps.storage)?;
+    let delegations = deps.querier.query_delegation(
+        env.contract.address.to_string(),
+        config.validator_address.clone(),
+    )?;
+
+    let amount = delegations
+        .iter()
+        .find(|d| d.validator == config.validator_address)
+        .map(|d| Coin {
+            denom: d.amount.denom.clone(),
+            amount: d.amount.amount.to_string(),
+        })
+        .unwrap_or(Coin {
+            denom: config.core_denom,
+            amount: "0".to_string(),
+        });
+
+    Ok(DelegatedAmountResponse { amount })
 }
 
 // #[cfg_attr(not(feature = "library"), entry_point)]
