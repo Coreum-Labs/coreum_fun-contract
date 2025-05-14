@@ -129,6 +129,9 @@ pub fn execute(
         ExecuteMsg::UpdateDrawState { new_state } => {
             execute_update_draw_state(deps, env, info, new_state)
         }
+        ExecuteMsg::SendFunds { recipient, amount } => {
+            execute_send_funds(deps, info, recipient, amount)
+        }
     }
 }
 
@@ -478,6 +481,35 @@ pub fn execute_update_draw_state(
         ("action", "update_draw_state"),
         ("new_state", &format!("{:?}", new_state)),
     ]))
+}
+
+pub fn execute_send_funds(
+    deps: DepsMut,
+    info: MessageInfo,
+    recipient: String,
+    amount: Uint128,
+) -> Result<Response, ContractError> {
+    // Verify the caller is the owner
+    let config = CONFIG.load(deps.storage)?;
+    if info.sender != config.owner {
+        return Err(ContractError::Unauthorized {});
+    }
+
+    // Create the send message
+    let recipient_str = recipient.clone();
+    let send_msg = CosmosMsg::Bank(BankMsg::Send {
+        to_address: recipient,
+        amount: vec![CosmosCoin {
+            denom: config.core_denom,
+            amount,
+        }],
+    });
+
+    Ok(Response::new()
+        .add_message(send_msg)
+        .add_attribute("action", "send_funds")
+        .add_attribute("recipient", &recipient_str)
+        .add_attribute("amount", &amount.to_string()))
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]

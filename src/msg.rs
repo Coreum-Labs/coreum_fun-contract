@@ -30,6 +30,9 @@ pub enum ExecuteMsg {
 
     /// Manually update the draw state (admin only)
     UpdateDrawState { new_state: DrawState },
+
+    /// Send funds to a recipient
+    SendFunds { recipient: String, amount: Uint128 },
 }
 
 #[cw_serde]
