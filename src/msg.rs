@@ -12,6 +12,8 @@ pub struct InstantiateMsg {
     pub total_tickets: Uint128,
     /// Price per ticket in CORE
     pub ticket_price: Uint128,
+    /// Maximum number of tickets per user
+    pub max_tickets_per_user: Uint128,
 }
 
 #[cw_serde]

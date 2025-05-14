@@ -25,6 +25,12 @@ pub enum ContractError {
         available: Uint128,
     },
 
+    #[error("Max tickets per user reached (requested: {requested:?}, available: {available:?})")]
+    MaxTicketsPerUserReached {
+        requested: Uint128,
+        available: Uint128,
+    },
+
     #[error("No funds sent")]
     NoFunds {},
 
@@ -108,7 +114,4 @@ pub enum ContractError {
 
     #[error("Invalid query")]
     InvalidQuery {},
-
-    #[error("Too many tickets")]
-    TooManyTickets {},
 }

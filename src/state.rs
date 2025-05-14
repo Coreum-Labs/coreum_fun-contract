@@ -19,6 +19,7 @@ pub struct Config {
     pub core_denom: String,                          // Denom of CORE token (ucore)
     pub validator_address: String,                   // Coreum Labs validator address
     pub total_tickets: Uint128,                      // Total number of tickets available
+    pub max_tickets_per_user: Uint128,               // Maximum number of tickets per user
     pub ticket_price: Uint128,                       // Price per ticket in CORE
     pub draw_state: DrawState,                       // Current state of the draw
     pub winner: Option<Addr>,                        // Winner address (if selected)

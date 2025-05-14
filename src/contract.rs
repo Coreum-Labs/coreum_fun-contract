@@ -66,6 +66,7 @@ pub fn instantiate(
         total_tickets: msg.total_tickets,
         //in ucore
         ticket_price: msg.ticket_price,
+        max_tickets_per_user: msg.max_tickets_per_user,
         draw_state: DrawState::TicketSalesOpen,
         winner: None,
         undelegation_done_future_block: None,
@@ -172,14 +173,15 @@ pub fn execute_buy_ticket(
         });
     }
 
-    // Step 4: Verify the user has enough tickets
-    let balance = query_balance(deps.as_ref(), info.sender.to_string())?;
-    let user_tickets = Uint128::from_str(&balance.balance)?;
+    // Step 4: Verify the user have less tickets than the max allowed (counting the new purchase)
+    let balance = query_ticket_balance(deps.as_ref(), info.sender.to_string())?;
+    let user_tickets: Uint128 = Uint128::from_str(&balance.balance)?;
+    let max_tickets_per_user = CONFIG.load(deps.storage)?.max_tickets_per_user;
 
-    if user_tickets < number_of_tickets {
-        return Err(ContractError::NotEnoughTickets {
+    if user_tickets + number_of_tickets > max_tickets_per_user {
+        return Err(ContractError::MaxTicketsPerUserReached {
             requested: number_of_tickets,
-            available: user_tickets,
+            available: max_tickets_per_user - user_tickets,
         });
     }
 
@@ -360,7 +362,7 @@ pub fn execute_burn_tickets(
     }
 
     // Step 2: Verify the user has enough tickets
-    let balance = query_balance(deps.as_ref(), info.sender.to_string())?;
+    let balance = query_ticket_balance(deps.as_ref(), info.sender.to_string())?;
     let user_tickets = Uint128::from_str(&balance.balance)?;
 
     //TODO: might be an error depending on the precision of the token
@@ -515,7 +517,7 @@ pub fn execute_send_funds(
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
-        QueryMsg::Balance { account } => to_json_binary(&query_balance(deps, account)?),
+        QueryMsg::Balance { account } => to_json_binary(&query_ticket_balance(deps, account)?),
         QueryMsg::AccumulatedRewards {} => to_json_binary(&query_accumulated_rewards(deps)?),
         QueryMsg::GetParticipants {} => to_json_binary(&query_participants(deps)?),
         QueryMsg::GetWinner {} => to_json_binary(&query_winner(deps)?),
@@ -545,7 +547,7 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
 //     })
 // }
 
-fn query_balance(deps: Deps, account: String) -> StdResult<QueryBalanceResponse> {
+fn query_ticket_balance(deps: Deps, account: String) -> StdResult<QueryBalanceResponse> {
     let config = CONFIG.load(deps.storage)?;
     let denom = config.ticket_token.clone();
     let request = QueryBalanceRequest { account, denom };
