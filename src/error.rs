@@ -55,10 +55,10 @@ pub enum ContractError {
         available: Uint128,
     },
 
-    #[error("Undelegation period not completed (current block: {current_block:?}, undelegation block: {undelegation_block:?})")]
+    #[error("Undelegation period not completed (current timestamp: {current_timestamp:?}, undelegation timestamp: {undelegation_timestamp:?})")]
     UndelegationPeriodNotCompleted {
-        current_block: u64,
-        undelegation_block: u64,
+        current_timestamp: u64,
+        undelegation_timestamp: u64,
     },
 
     #[error("No undelegation in progress")]
@@ -114,4 +114,7 @@ pub enum ContractError {
 
     #[error("Invalid query")]
     InvalidQuery {},
+
+    #[error("No winner has been selected yet")]
+    NoWinnerSelected {},
 }

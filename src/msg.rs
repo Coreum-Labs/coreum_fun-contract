@@ -5,7 +5,7 @@ use cosmwasm_std::{Addr, Uint128};
 #[cw_serde]
 pub struct InstantiateMsg {
     /// Denom of the TICKET token (will be created on contract init)
-    pub ticket_token: String,
+    pub ticket_token_symbol: String,
     /// Coreum Labs validator address for staking
     pub validator_address: String,
     /// Total number of tickets available for the draft
@@ -22,7 +22,10 @@ pub enum ExecuteMsg {
     BuyTicket { number_of_tickets: Uint128 },
 
     /// Select the winner and send funds (admin only)
-    SelectWinnerAndSendFunds { winner_address: String },
+    SelectWinnerAndUndelegate { winner_address: String },
+
+    /// Send funds to a recipient
+    SendFunds { recipient: String, amount: Uint128 },
 
     /// Burn tickets to get the principal back
     BurnTickets { number_of_tickets: Uint128 },
@@ -33,11 +36,11 @@ pub enum ExecuteMsg {
     /// Manually update the draw state (admin only)
     UpdateDrawState { new_state: DrawState },
 
-    /// Send funds to a recipient
-    SendFunds { recipient: String, amount: Uint128 },
-
     /// Manually set the undelegation timestamp (admin only)
     SetUndelegationTimestamp { timestamp: u64 },
+
+    /// Send funds to a recipient
+    SendFundsToWinner {},
 }
 
 #[cw_serde]

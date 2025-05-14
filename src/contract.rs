@@ -127,9 +127,10 @@ pub fn execute(
         ExecuteMsg::BuyTicket { number_of_tickets } => {
             execute_buy_ticket(deps, env, info, number_of_tickets)
         }
-        ExecuteMsg::SelectWinnerAndSendFunds { winner_address } => {
-            execute_select_winner_and_send_funds(deps, env, info, winner_address)
+        ExecuteMsg::SelectWinnerAndUndelegate { winner_address } => {
+            execute_select_winner_and_undelegate(deps, env, info, winner_address)
         }
+        ExecuteMsg::SendFundsToWinner {} => execute_send_funds_to_winner(deps, env, info),
         ExecuteMsg::BurnTickets { number_of_tickets } => {
             execute_burn_tickets(deps, env, info, number_of_tickets)
         }
@@ -250,7 +251,7 @@ pub fn execute_buy_ticket(
         .add_attributes(attrs))
 }
 
-pub fn execute_select_winner_and_send_funds(
+pub fn execute_select_winner_and_undelegate(
     deps: DepsMut,
     env: Env,
     info: MessageInfo,
@@ -284,13 +285,6 @@ pub fn execute_select_winner_and_send_funds(
 
     // Step 5: Query accumulated rewards
     let accumulated_rewards = query_accumulated_rewards(deps.as_ref(), &env)?;
-    println!(
-        "accumulated_rewards: {}",
-        accumulated_rewards.accumulated_rewards
-    );
-
-    // Calculate the rewards by comparing delegation amount with original stake:
-    // rewards = delegation_amount - staked_amount
 
     let total_rewards = accumulated_rewards.accumulated_rewards + config.bonus_rewards;
 
@@ -302,24 +296,11 @@ pub fn execute_select_winner_and_send_funds(
         Ok(config)
     })?;
 
-    // Step 8: Send the rewards to the winner
-    let mut messages: Vec<CosmosMsg> = vec![];
-
-    if !total_rewards.is_zero() {
-        let send_rewards_msg = CosmosMsg::Bank(BankMsg::Send {
-            to_address: winner_addr.to_string(),
-            amount: vec![CosmosCoin {
-                denom: config.core_denom.clone(),
-                amount: total_rewards,
-            }],
-        });
-        messages.push(send_rewards_msg);
-    }
-
-    // Step 9: Start the undelegation process for all the tokens
+    // Step 7: Start the undelegation process for all the tokens
     let delegations = deps
         .querier
         .query_all_delegations(winner_addr.to_string())?;
+    let mut messages: Vec<CosmosMsg> = vec![];
     for delegation in delegations {
         let undelegate_msg = StakingMsg::Undelegate {
             validator: delegation.validator,
@@ -328,14 +309,13 @@ pub fn execute_select_winner_and_send_funds(
         messages.push(CosmosMsg::Staking(undelegate_msg));
     }
 
-    // Step 10: Calculate the timestamp at which the undelegation will be completed
-    // Coreum has 7 days undelegation period
+    // Step 8: Calculate the timestamp at which the undelegation will be completed
     const SECONDS_PER_DAY: u64 = 24 * 60 * 60;
     const UNDELEGATION_DAYS: u64 = 7;
     let undelegation_period_seconds: u64 = SECONDS_PER_DAY * UNDELEGATION_DAYS;
     let undelegation_done_timestamp = env.block.time.seconds() + undelegation_period_seconds;
 
-    // Step 10: Update the contract state with the future timestamp
+    // Step 9: Update the contract state with the future timestamp
     CONFIG.update(deps.storage, |mut config| -> StdResult<_> {
         config.undelegation_done_timestamp = Some(undelegation_done_timestamp);
         Ok(config)
@@ -343,7 +323,7 @@ pub fn execute_select_winner_and_send_funds(
 
     // Return response with all actions
     Ok(Response::new().add_messages(messages).add_attributes(vec![
-        ("action", "select_winner"),
+        ("action", "select_winner_and_undelegate"),
         ("winner", &winner_addr.to_string()),
         ("rewards_amount", &total_rewards.to_string()),
         (
@@ -352,6 +332,60 @@ pub fn execute_select_winner_and_send_funds(
         ),
         ("new_state", "WinnerSelectedUndelegationInProcess"),
     ]))
+}
+
+pub fn execute_send_funds_to_winner(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+) -> Result<Response, ContractError> {
+    // Step 1: Verify the caller is the owner
+    let config = CONFIG.load(deps.storage)?;
+    if info.sender != config.owner {
+        return Err(ContractError::Unauthorized {});
+    }
+
+    // Step 2: Verify the draw is in the correct state
+    if config.draw_state != DrawState::WinnerSelectedUndelegationInProcess {
+        return Err(ContractError::InvalidDrawState {
+            expected: DrawState::WinnerSelectedUndelegationInProcess,
+            actual: config.draw_state,
+        });
+    }
+
+    // Step 3: Check if undelegation period is complete
+    if let Some(undelegation_timestamp) = config.undelegation_done_timestamp {
+        if env.block.time.seconds() < undelegation_timestamp {
+            return Err(ContractError::UndelegationPeriodNotCompleted {
+                current_timestamp: env.block.time.seconds(),
+                undelegation_timestamp,
+            });
+        }
+    }
+
+    // Step 4: Get winner address
+    let winner_addr = config.winner.ok_or(ContractError::NoWinnerSelected {})?;
+
+    // Step 5: Calculate total rewards
+    let total_rewards = config.accumulated_rewards + config.bonus_rewards;
+
+    // Step 6: Send the rewards to the winner
+    let send_rewards_msg = CosmosMsg::Bank(BankMsg::Send {
+        to_address: winner_addr.to_string(),
+        amount: vec![CosmosCoin {
+            denom: config.core_denom.clone(),
+            amount: total_rewards,
+        }],
+    });
+
+    // Return response with all actions
+    Ok(Response::new()
+        .add_message(send_rewards_msg)
+        .add_attributes(vec![
+            ("action", "send_funds_to_winner"),
+            ("winner", &winner_addr.to_string()),
+            ("rewards_amount", &total_rewards.to_string()),
+        ]))
 }
 
 pub fn execute_burn_tickets(
