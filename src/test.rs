@@ -2,53 +2,32 @@
 mod tests {
     use crate::{
         msg::{ExecuteMsg, InstantiateMsg, QueryMsg},
-        state::{Config, DrawState},
+        state::DrawState,
     };
-    use coreum_test_tube::{
-        Account, AssetFT, Bank, CoreumTestApp, Module, SigningAccount, Staking, Wasm,
-    };
+    use coreum_test_tube::{Account, Bank, CoreumTestApp, Module, SigningAccount, Staking, Wasm};
     use coreum_wasm_sdk::types::cosmos::bank::v1beta1::MsgSend;
     use coreum_wasm_sdk::types::cosmos::staking::v1beta1::{
         CommissionRates, Description, MsgCreateValidator,
     };
 
     use bech32::{Bech32, Hrp};
-    use coreum_wasm_sdk::types::coreum::asset::ft::v1::{
-        MsgBurn, MsgIssue, MsgMint, QueryBalanceRequest, QueryBalanceResponse,
-    };
 
     use coreum_wasm_sdk::shim::Any;
     use coreum_wasm_sdk::types::cosmos::base::v1beta1::Coin as BaseCoin;
-    use cosmrs::crypto::secp256k1::SigningKey;
     use cosmrs::proto;
-    use cosmrs::proto::cosmos::crypto::ed25519::PubKey;
-    use cosmrs::AccountId;
-    use cosmwasm_std::{coin, coins, Addr, Coin as CosmoCoin, CosmosMsg, StakingMsg, Uint128};
+    use cosmwasm_std::{coin, Coin as CosmoCoin, Uint128};
     use prost::Message;
     use ring::{
         rand,
         signature::{self, KeyPair},
     };
-    use std::str::FromStr;
 
     const FEE_DENOM: &str = "ucore";
     const TICKET_TOKEN: &str = "TICKET";
     const TICKET_PRECISION: u32 = 6;
-    const SECONDS_PER_BLOCK: u64 = 11; // 1.1 seconds = 11/10 seconds
     const SECONDS_PER_DAY: u64 = 24 * 60 * 60;
     const UNDELEGATION_DAYS: u64 = 7;
     const TICKET_PRICE: u128 = 200_000_000; //200 COREUM
-
-    // fn derive_validator_address(account_address: &str) -> String {
-    //     // Parse the account address to get the public key bytes
-    //     let account_id = AccountId::from_str(account_address).unwrap();
-    //     let pubkey_bytes = account_id.as_ref();
-
-    //     // Encode with the validator prefix
-    //     let validator_addr =
-    //         encode("corevaloper", pubkey_bytes.to_base32(), Variant::Bech32).unwrap();
-    //     validator_addr
-    // }
 
     fn get_validator_address(address: &str) -> String {
         let (_, data) = bech32::decode(address).expect("failed to decode");
@@ -167,7 +146,6 @@ mod tests {
 
         let wasm: Wasm<'_, CoreumTestApp> = Wasm::new(&app);
         // let validator_operator_address = create_validator(&app, &validator_creator);
-        let staking: Staking<'_, CoreumTestApp> = Staking::new(&app);
 
         let validator_address: String =
             get_validator_address(validator_creator.address().to_string().as_str());
@@ -365,7 +343,7 @@ mod tests {
             .unwrap();
         println!("contract_delegated_tokens: {:?}", contract_delegated_tokens);
 
-        let undelegation_period_seconds: u64 = SECONDS_PER_DAY * 1000;
+        let undelegation_period_seconds: u64 = SECONDS_PER_DAY * UNDELEGATION_DAYS + 1000;
         let current_timestamp = app.get_block_timestamp();
         let target_timestamp = current_timestamp.seconds() + undelegation_period_seconds;
 

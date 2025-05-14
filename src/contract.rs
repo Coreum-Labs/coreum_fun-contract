@@ -1,4 +1,3 @@
-use coreum_wasm_sdk::types::cosmos::staking::v1beta1::DelegationResponse;
 use cosmwasm_std::{
     entry_point, to_json_binary, Addr, BankMsg, Binary, Coin as CosmosCoin, CosmosMsg, Deps,
     DepsMut, Empty, Env, MessageInfo, Order, Response, StakingMsg, StdResult, Uint128,
@@ -12,9 +11,8 @@ use crate::error::ContractError;
 use crate::msg::{
     AccumulatedRewardsResponse, BonusRewardsResponse, ClaimInfo, ClaimsResponse,
     CurrentStateResponse, DelegatedAmountResponse, DraftTvlResponse, ExecuteMsg, InstantiateMsg,
-    MigrateMsg, ParticipantInfo, ParticipantsResponse, QueryMsg, TicketHoldersResponse,
-    TicketsSoldResponse, TotalBurnedResponse, UserTicketsResponse, UserWinChanceResponse,
-    WinnerResponse,
+    ParticipantInfo, ParticipantsResponse, QueryMsg, TicketHoldersResponse, TicketsSoldResponse,
+    TotalBurnedResponse, UserTicketsResponse, UserWinChanceResponse, WinnerResponse,
 };
 use crate::state::{
     all_tickets_burned, calculate_win_chance, decrease_ticket_holder, get_draft_tvl,
@@ -23,10 +21,10 @@ use crate::state::{
     CONFIG, TICKET_DENOM, TICKET_HOLDERS, TOTAL_TICKETS_BURNED, TOTAL_TICKETS_SOLD,
 };
 
-use coreum_wasm_sdk::types::cosmos::base::{query::v1beta1::PageRequest, v1beta1::Coin};
+use coreum_wasm_sdk::types::cosmos::base::v1beta1::Coin;
 
 use coreum_wasm_sdk::types::coreum::asset::ft::v1::{
-    MsgBurn, MsgIssue, MsgMint, QueryBalanceRequest, QueryBalanceResponse,
+    MsgIssue, MsgMint, QueryBalanceRequest, QueryBalanceResponse,
 };
 
 // Version info for migration
