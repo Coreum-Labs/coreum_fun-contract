@@ -1,7 +1,6 @@
 use cosmwasm_std::{
-    entry_point, to_json_binary, Addr, BankMsg, Binary, Coin as CosmosCoin, CosmosMsg,
-    DelegationTotalRewardsResponse, Deps, DepsMut, Empty, Env, MessageInfo, Order, QueryRequest,
-    Response, StakingMsg, StakingQuery, StdResult, Uint128,
+    entry_point, to_json_binary, Addr, BankMsg, Binary, Coin as CosmosCoin, CosmosMsg, Deps,
+    DepsMut, Empty, Env, MessageInfo, Order, Response, StakingMsg, StdResult, Uint128,
 };
 use cw2::set_contract_version;
 use std::str::FromStr;
@@ -56,7 +55,7 @@ pub fn instantiate(
     }
 
     // Step 3: Validate validator address
-    deps.api.addr_validate(&msg.validator_address)?;
+    // deps.api.validator_address(&msg.validator_address)?;
 
     // Step 4: Initialize config with default values
     let config = Config {
@@ -750,34 +749,34 @@ fn query_claims(deps: Deps, address: Option<String>) -> StdResult<ClaimsResponse
     })
 }
 
-#[cfg_attr(not(feature = "library"), entry_point)]
-pub fn migrate(deps: DepsMut, _env: Env, msg: MigrateMsg) -> Result<Response, ContractError> {
-    let version = cw2::get_contract_version(deps.storage)?;
+// #[cfg_attr(not(feature = "library"), entry_point)]
+// pub fn migrate(deps: DepsMut, _env: Env, msg: MigrateMsg) -> Result<Response, ContractError> {
+//     let version = cw2::get_contract_version(deps.storage)?;
 
-    // Ensure we're migrating from the same contract
-    if version.contract != CONTRACT_NAME {
-        return Err(ContractError::InvalidMigration {
-            current_name: version.contract,
-            current_version: version.version,
-        });
-    }
+//     // Ensure we're migrating from the same contract
+//     if version.contract != CONTRACT_NAME {
+//         return Err(ContractError::InvalidMigration {
+//             current_name: version.contract,
+//             current_version: version.version,
+//         });
+//     }
 
-    // Update contract version
-    set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
+//     // Update contract version
+//     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
 
-    // Update validator address if provided
-    if let Some(new_validator) = msg.new_validator_address {
-        // Validate the new validator address
-        deps.api.addr_validate(&new_validator)?;
+//     // Update validator address if provided
+//     if let Some(new_validator) = msg.new_validator_address {
+//         // Validate the new validator address
+//         deps.api.addr_validate(&new_validator)?;
 
-        CONFIG.update(deps.storage, |mut config| -> StdResult<_> {
-            config.validator_address = new_validator.clone();
-            Ok(config)
-        })?;
-    }
+//         CONFIG.update(deps.storage, |mut config| -> StdResult<_> {
+//             config.validator_address = new_validator.clone();
+//             Ok(config)
+//         })?;
+//     }
 
-    Ok(Response::new()
-        .add_attribute("action", "migrate")
-        .add_attribute("from_version", version.version)
-        .add_attribute("to_version", CONTRACT_VERSION))
-}
+//     Ok(Response::new()
+//         .add_attribute("action", "migrate")
+//         .add_attribute("from_version", version.version)
+//         .add_attribute("to_version", CONTRACT_VERSION))
+// }
