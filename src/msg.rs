@@ -35,6 +35,14 @@ pub enum ExecuteMsg {
 #[cw_serde]
 #[derive(QueryResponses)]
 pub enum QueryMsg {
+    /// Get the balance of a specific address
+    #[returns(BalanceResponse)]
+    Balance { account: String },
+
+    /// Get the accumulated rewards
+    #[returns(AccumulatedRewardsResponse)]
+    AccumulatedRewards {},
+
     /// Get all participants in the lottery
     #[returns(ParticipantsResponse)]
     GetParticipants {},
@@ -92,6 +100,15 @@ pub enum QueryMsg {
 
 /// Migration message for contract upgrades
 #[cw_serde]
+pub struct BalanceResponse {
+    pub balance: Uint128,
+}
+
+#[cw_serde]
+pub struct AccumulatedRewardsResponse {
+    pub accumulated_rewards: Uint128,
+}
+
 pub struct MigrateMsg {
     pub new_validator_address: Option<String>,
 }
