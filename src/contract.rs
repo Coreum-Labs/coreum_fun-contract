@@ -301,7 +301,7 @@ pub fn execute_select_winner_and_undelegate(
     // Step 7: Start the undelegation process for all the tokens
     let delegations = deps
         .querier
-        .query_all_delegations(winner_addr.to_string())?;
+        .query_all_delegations(env.contract.address.to_string())?;
     let mut messages: Vec<CosmosMsg> = vec![];
     for delegation in delegations {
         let undelegate_msg = StakingMsg::Undelegate {
