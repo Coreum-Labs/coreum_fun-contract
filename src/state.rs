@@ -15,12 +15,12 @@ pub enum DrawState {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct Config {
     pub owner: Addr,                              // Contract owner
-    pub ticket_token: String,                     // Denom of the TICKET token
+    pub ticket_symbol: String,                    // Denom of the TICKET token
     pub core_denom: String,                       // Denom of CORE token (ucore)
     pub validator_address: String,                // Coreum Labs validator address
     pub total_tickets: Uint128,                   // Total number of tickets available
     pub max_tickets_per_user: Uint128,            // Maximum number of tickets per user
-    pub ticket_price: Uint128,                    // Price per ticket in CORE
+    pub ticket_price: Uint128,                    // Price per ticket in ucore
     pub draw_state: DrawState,                    // Current state of the draw
     pub winner: Option<Addr>,                     // Winner address (if selected)
     pub undelegation_done_timestamp: Option<u64>, // Timestamp at which undelegation will complete
@@ -35,10 +35,13 @@ pub const TOTAL_TICKETS_SOLD: Item<Uint128> = Item::new("total_tickets_sold");
 pub const TOTAL_TICKETS_BURNED: Item<Uint128> = Item::new("total_tickets_burned");
 pub const CLAIMS: Map<&Addr, Uint128> = Map::new("claims"); // Address -> Amount claimed
 
+pub const TICKET_DENOM: Item<String> = Item::new("ticket_denom");
+
 // Initialize the storage
 pub fn initialize_storage(storage: &mut dyn Storage) -> StdResult<()> {
     TOTAL_TICKETS_SOLD.save(storage, &Uint128::zero())?;
     TOTAL_TICKETS_BURNED.save(storage, &Uint128::zero())?;
+    TICKET_DENOM.save(storage, &"".to_string())?;
     Ok(())
 }
 

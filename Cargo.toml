@@ -51,3 +51,8 @@ thiserror = { version = "1.0.58" }
 [dev-dependencies]
 cw-multi-test = "2.0.0"
 coreum-test-tube = "5.0.0"
+cosmrs = "0.16.0"
+bech32 = "0.11.0"
+ring = "0.17.8"
+prost = "0.12.6"
+bindgen = "0.69.4"
