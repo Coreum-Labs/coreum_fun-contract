@@ -18,7 +18,7 @@ use crate::state::{
     all_tickets_burned, calculate_win_chance, decrease_ticket_holder, get_draft_tvl,
     increment_tickets_burned, increment_tickets_sold, initialize_storage,
     should_close_ticket_sales, update_claim, update_ticket_holder, Config, DrawState, CLAIMS,
-    CONFIG, TICKET_HOLDERS, TOTAL_TICKETS_BURNED, TOTAL_TICKETS_SOLD,
+    CONFIG, TICKET_DENOM, TICKET_HOLDERS, TOTAL_TICKETS_BURNED, TOTAL_TICKETS_SOLD,
 };
 
 use coreum_wasm_sdk::types::cosmos::base::{query::v1beta1::PageRequest, v1beta1::Coin};
@@ -60,7 +60,7 @@ pub fn instantiate(
     // Step 4: Initialize config with default values
     let config = Config {
         owner: info.sender.clone(),
-        ticket_token: msg.ticket_token.clone(),
+        ticket_symbol: msg.ticket_token_symbol.clone(),
         core_denom: COREUM_DENOM.to_string(),
         validator_address: msg.validator_address.clone(),
         total_tickets: msg.total_tickets,
@@ -81,8 +81,8 @@ pub fn instantiate(
     // Step 6: Create the TICKET smart token (first time setup)
     let issue_token_msg = MsgIssue {
         issuer: env.contract.address.to_string(),
-        symbol: msg.ticket_token.clone(),
-        subunit: format!("u{}", msg.ticket_token.to_lowercase()),
+        symbol: msg.ticket_token_symbol.clone(),
+        subunit: format!("u{}", msg.ticket_token_symbol.to_lowercase()),
         precision: TICKET_PRECISION, // TODO: check if we go with 0 or 6
         initial_amount: "0".to_string(),
         description: "Draft tickets for Coreum No-Loss Draft on coreum.fun".to_string(),
@@ -96,12 +96,21 @@ pub fn instantiate(
         extension_settings: None,
     };
 
+    //Step 7 construct the denom and save it in the contract state
+    let denom = format!(
+        "u{}-{}",
+        msg.ticket_token_symbol.to_lowercase(),
+        env.contract.address
+    );
+
+    TICKET_DENOM.save(deps.storage, &denom)?;
+
     // Step 7: Return success response
     Ok(Response::new()
         .add_message(CosmosMsg::Any(issue_token_msg.to_any()))
         .add_attribute("method", "instantiate")
         .add_attribute("owner", info.sender.to_string())
-        .add_attribute("ticket_token", msg.ticket_token)
+        .add_attribute("ticket_token_symbol", msg.ticket_token_symbol)
         .add_attribute("validator_address", msg.validator_address)
         .add_attribute("total_tickets", msg.total_tickets.to_string())
         .add_attribute("ticket_price", msg.ticket_price.to_string()))
@@ -202,11 +211,7 @@ pub fn execute_buy_ticket(
     let mint_msg = MsgMint {
         sender: env.contract.address.to_string(),
         coin: Some(Coin {
-            denom: format!(
-                "u{}-{}",
-                config.ticket_token.to_lowercase(),
-                env.contract.address
-            ),
+            denom: TICKET_DENOM.load(deps.storage)?,
             amount: (number_of_tickets.pow(TICKET_PRECISION)).to_string(),
         }),
         recipient: info.sender.to_string(),
@@ -279,6 +284,10 @@ pub fn execute_select_winner_and_send_funds(
 
     // Step 5: Query accumulated rewards
     let accumulated_rewards = query_accumulated_rewards(deps.as_ref(), &env)?;
+    println!(
+        "accumulated_rewards: {}",
+        accumulated_rewards.accumulated_rewards
+    );
 
     // Calculate the rewards by comparing delegation amount with original stake:
     // rewards = delegation_amount - staked_amount
@@ -380,28 +389,46 @@ pub fn execute_burn_tickets(
     }
 
     // Step 2: Verify the user has enough tickets
-    let balance = query_ticket_balance(deps.as_ref(), info.sender.to_string())?;
-    let user_tickets = Uint128::from_str(&balance.balance)?;
+    // Not going to work because the user sent the tickets in the funds!
+    // let balance_before_burn = query_ticket_balance(deps.as_ref(), info.sender.to_string())?;
+    // let user_tickets_before_burn = Uint128::from_str(&balance_before_burn.balance)?;
+    // println!("user_tickets_before_burn: {}", user_tickets_before_burn);
 
-    if user_tickets < number_of_tickets.pow(TICKET_PRECISION) {
-        return Err(ContractError::NotEnoughTickets {
-            requested: number_of_tickets,
-            available: user_tickets,
+    // if user_tickets_before_burn < number_of_tickets.pow(TICKET_PRECISION) {
+    //     return Err(ContractError::NotEnoughTickets {
+    //         requested: number_of_tickets.pow(TICKET_PRECISION),
+    //         available: user_tickets_before_burn,
+    //     });
+    // }
+
+    //Step3: Check if the user sent the correct amount of Ticket in the funds based on the number of tickets they want to burn
+
+    let ticket_denom = TICKET_DENOM.load(deps.storage)?;
+    let payment = info
+        .funds
+        .iter()
+        .find(|coin| coin.denom == ticket_denom)
+        .ok_or(ContractError::NoFunds {})?;
+
+    if payment.amount < number_of_tickets.pow(TICKET_PRECISION) {
+        return Err(ContractError::InsufficientFunds {
+            required: number_of_tickets.pow(TICKET_PRECISION),
+            provided: payment.amount,
         });
     }
 
-    // Step 3: Calculate the refund amount (original investment)
-    //We use the users_tickets instead of the requested number of tickets
-    let refund_amount: Uint128 = user_tickets * config.ticket_price;
+    //Step 4: The contract now burns the the TICKET tokens
+    // let burn_msg = MsgBurn {
+    //     sender: env.contract.address.to_string(),
+    //     coin: Some(Coin {
+    //         denom: TICKET_DENOM.load(deps.storage)?,
+    //         amount: number_of_tickets.to_string(),
+    //     }),
+    // };
 
-    // Step 4: Burn the TICKET tokens
-    let burn_msg = MsgBurn {
-        sender: info.sender.to_string(),
-        coin: Some(Coin {
-            denom: config.ticket_token.clone(),
-            amount: number_of_tickets.to_string(),
-        }),
-    };
+    // Step 4: Calculate the refund amount (original investment)
+    //We use the users_tickets instead of the requested number of tickets
+    let refund_amount: Uint128 = number_of_tickets * config.ticket_price;
 
     // Step 5: Send back the COREUM to the user
     let send_refund_msg = CosmosMsg::Bank(BankMsg::Send {
@@ -437,7 +464,7 @@ pub fn execute_burn_tickets(
 
     // Return the response with all actions
     Ok(Response::new()
-        .add_message(CosmosMsg::Any(burn_msg.to_any()))
+        // .add_message(CosmosMsg::Any(burn_msg.to_any()))
         .add_message(send_refund_msg)
         .add_attributes(attrs))
 }
@@ -614,8 +641,7 @@ fn query_accumulated_rewards(deps: Deps, env: &Env) -> StdResult<AccumulatedRewa
 }
 
 fn query_ticket_balance(deps: Deps, account: String) -> StdResult<QueryBalanceResponse> {
-    let config = CONFIG.load(deps.storage)?;
-    let denom = config.ticket_token.clone();
+    let denom = TICKET_DENOM.load(deps.storage)?;
     let request = QueryBalanceRequest { account, denom };
     request.query(&deps.querier)
 }
