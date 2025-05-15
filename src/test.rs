@@ -983,8 +983,26 @@ mod tests {
         let ticket_denom = format!("u{}-{}", TICKET_TOKEN.to_lowercase(), contract_address);
         let tickets_to_burn = CosmoCoin {
             amount: number_of_tickets * Uint128::from(10u128).pow(TICKET_PRECISION),
-            denom: ticket_denom,
+            denom: ticket_denom.clone(),
         };
+
+        // Get the user ticket balance before burning tickets
+        let initial_balance = bank
+            .query_balance(&QueryBalanceRequest {
+                address: user.address(),
+                denom: ticket_denom.clone(),
+            })
+            .unwrap()
+            .balance
+            .unwrap()
+            .amount
+            .parse::<u128>()
+            .unwrap();
+
+        assert_eq!(
+            initial_balance,
+            (number_of_tickets * Uint128::from(10u128).pow(TICKET_PRECISION)).u128()
+        );
 
         wasm.execute(
             &contract_address,
@@ -994,7 +1012,22 @@ mod tests {
         )
         .unwrap();
 
-        // Verify no tickets left
+        // Verify no tickets left (user balance)
+        let final_balance = bank
+            .query_balance(&QueryBalanceRequest {
+                address: user.address(),
+                denom: ticket_denom.clone(),
+            })
+            .unwrap()
+            .balance
+            .unwrap()
+            .amount
+            .parse::<u128>()
+            .unwrap();
+
+        assert_eq!(final_balance, 0);
+
+        // Verify no tickets left (contract state)
         let user_tickets: crate::msg::UserTicketsResponse = wasm
             .query(
                 &contract_address,
