@@ -355,7 +355,7 @@ mod tests {
         .unwrap();
 
         // Wait for undelegation period to complete
-        app.increase_time(SECONDS_PER_DAY * UNDELEGATION_DAYS + 10000);
+        app.increase_time(SECONDS_PER_DAY * UNDELEGATION_DAYS + 100000000);
 
         // Send funds to winner
         wasm.execute(
@@ -402,7 +402,7 @@ mod tests {
         // Burn tickets
 
         let tickets_to_burn = CosmoCoin {
-            amount: number_of_tickets.pow(TICKET_PRECISION),
+            amount: number_of_tickets * Uint128::from(10u128).pow(TICKET_PRECISION),
             denom: ticket_denom,
         };
 
@@ -885,7 +885,7 @@ mod tests {
         );
     }
 
-    // #[test]
+    #[test]
     fn test_burn_tickets_and_refund() {
         let app = CoreumTestApp::new();
         let admin = app
@@ -968,7 +968,7 @@ mod tests {
         .unwrap();
 
         // Wait for undelegation period to complete
-        app.increase_time(SECONDS_PER_DAY * UNDELEGATION_DAYS + 10000);
+        app.increase_time(SECONDS_PER_DAY * UNDELEGATION_DAYS + 10000000);
 
         // Send funds to winner
         wasm.execute(
@@ -982,7 +982,7 @@ mod tests {
         // Burn tickets
         let ticket_denom = format!("u{}-{}", TICKET_TOKEN.to_lowercase(), contract_address);
         let tickets_to_burn = CosmoCoin {
-            amount: number_of_tickets.pow(TICKET_PRECISION),
+            amount: number_of_tickets * Uint128::from(10u128).pow(TICKET_PRECISION),
             denom: ticket_denom,
         };
 
@@ -1027,5 +1027,76 @@ mod tests {
             expected_refund,
             actual_refund
         );
+    }
+
+    #[test]
+    fn test_ticket_token_balance() {
+        let app = CoreumTestApp::new();
+        let admin = app
+            .init_account(&[coin(100_000_000_000_000_000_000u128, FEE_DENOM)])
+            .unwrap();
+        let user = app
+            .init_account(&[coin(100_000_000_000_000_000_000u128, FEE_DENOM)])
+            .unwrap();
+        let validator_creator = app
+            .init_account(&[coin(100_000_000_000_000_000_000u128, FEE_DENOM)])
+            .unwrap();
+
+        let wasm = Wasm::new(&app);
+        let bank = Bank::new(&app);
+        let validator_address = create_validator(&app, &validator_creator);
+
+        let contract_address = store_and_instantiate(
+            &wasm,
+            &admin,
+            validator_address,
+            Uint128::from(1000u128),
+            Uint128::from(TICKET_PRICE),
+            Uint128::from(1000u128),
+        );
+
+        // Buy tickets
+        let number_of_tickets = Uint128::from(5u128);
+        let payment = number_of_tickets * Uint128::from(TICKET_PRICE);
+
+        wasm.execute(
+            &contract_address,
+            &ExecuteMsg::BuyTicket { number_of_tickets },
+            &[coin(payment.u128(), FEE_DENOM)],
+            &user,
+        )
+        .unwrap();
+
+        // Get ticket token denom
+        let ticket_denom = format!("u{}-{}", TICKET_TOKEN.to_lowercase(), contract_address);
+
+        // Query ticket token balance
+        let ticket_balance = bank
+            .query_balance(&QueryBalanceRequest {
+                address: user.address(),
+                denom: ticket_denom.clone(),
+            })
+            .unwrap()
+            .balance
+            .unwrap();
+
+        // Verify denom
+        assert_eq!(ticket_balance.denom, ticket_denom);
+
+        // Verify amount (should be number_of_tickets * 10^6)
+        let expected_amount =
+            (number_of_tickets * Uint128::from(10u128).pow(TICKET_PRECISION)).to_string();
+        assert_eq!(ticket_balance.amount, expected_amount);
+
+        // Verify through contract query as well
+        let user_tickets: crate::msg::UserTicketsResponse = wasm
+            .query(
+                &contract_address,
+                &QueryMsg::GetUserNumberOfTickets {
+                    address: user.address(),
+                },
+            )
+            .unwrap();
+        assert_eq!(user_tickets.tickets, number_of_tickets);
     }
 }
