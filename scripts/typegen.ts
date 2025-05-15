@@ -1,4 +1,4 @@
-import codegen from "@cosmwasm/ts-codegen";
+import codegen from '@cosmwasm/ts-codegen';
 
 async function generateSDK() {
   try {
@@ -8,7 +8,6 @@ async function generateSDK() {
           name: "coreum-fun",
           dir: "./src/schema",
         },
-
       ],
       outPath: "./typegen",
       options: {
@@ -35,12 +34,6 @@ async function generateSDK() {
         },
         messageComposer: {
           enabled: false,
-        },
-        messageBuilder: {
-          enabled: false,
-        },
-        useContractsHook: {
-          enabled: true,
         },
       },
     });
