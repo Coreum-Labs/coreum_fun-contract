@@ -301,20 +301,22 @@ pub fn execute_select_winner_and_undelegate(
     })?;
 
     // Step 7: Start the undelegation process for all the tokens
-    let delegations = deps
-        .querier
-        .query_all_delegations(env.contract.address.to_string())?;
+    let delegation = deps.querier.query_delegation(
+        env.contract.address.to_string(),
+        config.validator_address.clone(),
+    )?;
+
     let mut messages: Vec<CosmosMsg> = vec![];
-    // for delegation in delegations {
-    let undelegate_msg = StakingMsg::Undelegate {
-        validator: config.validator_address.clone(),
-        amount: CosmosCoin {
-            denom: config.core_denom.clone(),
-            amount: Uint128::from(200000000000u128),
-        },
-    };
-    messages.push(CosmosMsg::Staking(undelegate_msg));
-    // }
+    if let Some(delegation) = delegation {
+        let undelegate_msg = StakingMsg::Undelegate {
+            validator: config.validator_address.clone(),
+            amount: CosmosCoin {
+                denom: config.core_denom.clone(),
+                amount: delegation.amount.amount,
+            },
+        };
+        messages.push(CosmosMsg::Staking(undelegate_msg));
+    }
 
     // Step 8: Calculate the timestamp at which the undelegation will be completed
     const SECONDS_PER_DAY: u64 = 24 * 60 * 60;
@@ -872,14 +874,12 @@ fn query_claims(deps: Deps, address: Option<String>) -> StdResult<ClaimsResponse
 
 fn query_delegated_amount(deps: Deps, env: &Env) -> StdResult<DelegatedAmountResponse> {
     let config = CONFIG.load(deps.storage)?;
-    let delegations = deps.querier.query_delegation(
+    let delegation = deps.querier.query_delegation(
         env.contract.address.to_string(),
         config.validator_address.clone(),
     )?;
 
-    let amount = delegations
-        .iter()
-        .find(|d| d.validator == config.validator_address)
+    let amount = delegation
         .map(|d| Coin {
             denom: d.amount.denom.clone(),
             amount: d.amount.amount.to_string(),
