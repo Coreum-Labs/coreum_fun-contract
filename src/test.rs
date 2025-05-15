@@ -5,12 +5,19 @@ mod tests {
         state::DrawState,
     };
     use coreum_test_tube::{Account, Bank, CoreumTestApp, Module, SigningAccount, Staking, Wasm};
-    use coreum_wasm_sdk::types::cosmos::bank::v1beta1::MsgSend;
+    use coreum_wasm_sdk::types::cosmos::bank::v1beta1::{
+        MsgSend, QueryBalanceRequest, QueryBalanceResponse,
+    };
     use coreum_wasm_sdk::types::cosmos::staking::v1beta1::{
         CommissionRates, Description, MsgCreateValidator,
     };
 
     use bech32::{Bech32, Hrp};
+
+    use coreum_wasm_sdk::types::coreum::asset::ft::v1::{
+        MsgIssue, MsgMint, QueryBalanceRequest as FtQueryBalanceRequest,
+        QueryBalanceResponse as FtQueryBalanceResponse,
+    };
 
     use coreum_wasm_sdk::shim::Any;
     use coreum_wasm_sdk::types::cosmos::base::v1beta1::Coin as BaseCoin;
@@ -103,6 +110,7 @@ mod tests {
             code_id,
             &InstantiateMsg {
                 ticket_token_symbol: TICKET_TOKEN.to_string(),
+                core_denom: FEE_DENOM.to_string(),
                 validator_address,
                 total_tickets,
                 ticket_price,
@@ -343,7 +351,7 @@ mod tests {
             .unwrap();
         println!("contract_delegated_tokens: {:?}", contract_delegated_tokens);
 
-        let undelegation_period_seconds: u64 = SECONDS_PER_DAY * UNDELEGATION_DAYS + 1000;
+        let undelegation_period_seconds: u64 = SECONDS_PER_DAY * UNDELEGATION_DAYS + 10000;
         let current_timestamp = app.get_block_timestamp();
         let target_timestamp = current_timestamp.seconds() + undelegation_period_seconds;
 
@@ -407,6 +415,7 @@ mod tests {
                 total_tickets: Uint128::zero(), // invalid total_tickets
                 ticket_price: Uint128::from(1000000u128),
                 max_tickets_per_user: Uint128::from(10u128),
+                core_denom: FEE_DENOM.to_string(),
             },
             None,
             "coreum-fun".into(),
@@ -457,5 +466,540 @@ mod tests {
             &user,
         );
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_bonus_rewards() {
+        let app = CoreumTestApp::new();
+        let admin = app
+            .init_account(&[coin(100_000_000_000_000_000_000u128, FEE_DENOM)])
+            .unwrap();
+        let user = app
+            .init_account(&[coin(100_000_000_000_000_000_000u128, FEE_DENOM)])
+            .unwrap();
+        let validator_creator = app
+            .init_account(&[coin(100_000_000_000_000_000_000u128, FEE_DENOM)])
+            .unwrap();
+
+        let wasm = Wasm::new(&app);
+        let validator_address = create_validator(&app, &validator_creator);
+
+        let contract_address = store_and_instantiate(
+            &wasm,
+            &admin,
+            validator_address,
+            Uint128::from(1000u128),
+            Uint128::from(TICKET_PRICE),
+            Uint128::from(1000u128),
+        );
+
+        // Add bonus rewards
+        let bonus_amount = Uint128::from(1000000u128);
+        wasm.execute(
+            &contract_address,
+            &ExecuteMsg::AddBonusRewardToThePool {
+                amount: bonus_amount,
+            },
+            &[coin(bonus_amount.u128(), FEE_DENOM)],
+            &admin,
+        )
+        .unwrap();
+
+        // Verify bonus rewards were added
+        let bonus_rewards: crate::msg::BonusRewardsResponse = wasm
+            .query(&contract_address, &QueryMsg::GetBonusRewards {})
+            .unwrap();
+        assert_eq!(bonus_rewards.bonus_rewards, bonus_amount);
+    }
+
+    #[test]
+    fn test_ticket_burning_edge_cases() {
+        let app = CoreumTestApp::new();
+        let admin = app
+            .init_account(&[coin(100_000_000_000_000_000_000u128, FEE_DENOM)])
+            .unwrap();
+        let user = app
+            .init_account(&[coin(100_000_000_000_000_000_000u128, FEE_DENOM)])
+            .unwrap();
+        let validator_creator = app
+            .init_account(&[coin(100_000_000_000_000_000_000u128, FEE_DENOM)])
+            .unwrap();
+
+        let wasm = Wasm::new(&app);
+        let validator_address = create_validator(&app, &validator_creator);
+
+        let contract_address = store_and_instantiate(
+            &wasm,
+            &admin,
+            validator_address,
+            Uint128::from(1000u128),
+            Uint128::from(TICKET_PRICE),
+            Uint128::from(1000u128),
+        );
+
+        // Test burning before winner selection
+        let result = wasm.execute(
+            &contract_address,
+            &ExecuteMsg::BurnTickets {
+                number_of_tickets: Uint128::from(5u128),
+            },
+            &[],
+            &user,
+        );
+        assert!(result.is_err());
+
+        // Buy tickets first
+        let number_of_tickets = Uint128::from(10u128);
+        let payment = number_of_tickets * Uint128::from(TICKET_PRICE);
+        wasm.execute(
+            &contract_address,
+            &ExecuteMsg::BuyTicket { number_of_tickets },
+            &[coin(payment.u128(), FEE_DENOM)],
+            &user,
+        )
+        .unwrap();
+
+        // Test burning more tickets than owned
+        let result = wasm.execute(
+            &contract_address,
+            &ExecuteMsg::BurnTickets {
+                number_of_tickets: Uint128::from(20u128),
+            },
+            &[],
+            &user,
+        );
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_state_transitions() {
+        let app = CoreumTestApp::new();
+        let admin = app
+            .init_account(&[coin(100_000_000_000_000_000_000u128, FEE_DENOM)])
+            .unwrap();
+        let user = app
+            .init_account(&[coin(100_000_000_000_000_000_000u128, FEE_DENOM)])
+            .unwrap();
+        let validator_creator = app
+            .init_account(&[coin(100_000_000_000_000_000_000u128, FEE_DENOM)])
+            .unwrap();
+
+        let wasm = Wasm::new(&app);
+        let validator_address = create_validator(&app, &validator_creator);
+
+        let contract_address = store_and_instantiate(
+            &wasm,
+            &admin,
+            validator_address,
+            Uint128::from(1000u128),
+            Uint128::from(TICKET_PRICE),
+            Uint128::from(1000u128),
+        );
+
+        // Buy all tickets to trigger state change
+        let number_of_tickets = Uint128::from(1000u128);
+        let payment = number_of_tickets * Uint128::from(TICKET_PRICE);
+        wasm.execute(
+            &contract_address,
+            &ExecuteMsg::BuyTicket { number_of_tickets },
+            &[coin(payment.u128(), FEE_DENOM)],
+            &user,
+        )
+        .unwrap();
+
+        // Verify state changed
+        let state: crate::msg::CurrentStateResponse = wasm
+            .query(&contract_address, &QueryMsg::GetCurrentState {})
+            .unwrap();
+        assert_eq!(state.state, DrawState::TicketsSoldOutAccumulationInProgress);
+
+        //Manually set the state to DrawFinished
+        wasm.execute(
+            &contract_address,
+            &ExecuteMsg::UpdateDrawState {
+                new_state: DrawState::DrawFinished,
+            },
+            &[],
+            &admin,
+        )
+        .unwrap();
+
+        // Verify state changed
+        let state: crate::msg::CurrentStateResponse = wasm
+            .query(&contract_address, &QueryMsg::GetCurrentState {})
+            .unwrap();
+        assert_eq!(state.state, DrawState::DrawFinished);
+    }
+
+    #[test]
+    fn test_user_limits() {
+        let app = CoreumTestApp::new();
+        let admin = app
+            .init_account(&[coin(100_000_000_000_000_000_000u128, FEE_DENOM)])
+            .unwrap();
+        let user1 = app
+            .init_account(&[coin(100_000_000_000_000_000_000u128, FEE_DENOM)])
+            .unwrap();
+        let user2 = app
+            .init_account(&[coin(100_000_000_000_000_000_000u128, FEE_DENOM)])
+            .unwrap();
+        let validator_creator = app
+            .init_account(&[coin(100_000_000_000_000_000_000u128, FEE_DENOM)])
+            .unwrap();
+
+        let wasm = Wasm::new(&app);
+        let validator_address = create_validator(&app, &validator_creator);
+
+        let contract_address = store_and_instantiate(
+            &wasm,
+            &admin,
+            validator_address,
+            Uint128::from(1000u128),
+            Uint128::from(TICKET_PRICE),
+            Uint128::from(100u128), // max 100 tickets per user
+        );
+
+        // Test max tickets per user
+        let number_of_tickets = Uint128::from(101u128);
+        let payment = number_of_tickets * Uint128::from(TICKET_PRICE);
+        let result = wasm.execute(
+            &contract_address,
+            &ExecuteMsg::BuyTicket { number_of_tickets },
+            &[coin(payment.u128(), FEE_DENOM)],
+            &user1,
+        );
+        assert!(result.is_err());
+
+        // Test multiple users buying tickets
+        let tickets_user1 = Uint128::from(50u128);
+        let tickets_user2 = Uint128::from(50u128);
+
+        wasm.execute(
+            &contract_address,
+            &ExecuteMsg::BuyTicket {
+                number_of_tickets: tickets_user1,
+            },
+            &[coin(tickets_user1.u128() * TICKET_PRICE, FEE_DENOM)],
+            &user1,
+        )
+        .unwrap();
+
+        wasm.execute(
+            &contract_address,
+            &ExecuteMsg::BuyTicket {
+                number_of_tickets: tickets_user2,
+            },
+            &[coin(tickets_user2.u128() * TICKET_PRICE, FEE_DENOM)],
+            &user2,
+        )
+        .unwrap();
+
+        // Verify ticket distribution
+        let user1_tickets: crate::msg::UserTicketsResponse = wasm
+            .query(
+                &contract_address,
+                &QueryMsg::GetUserNumberOfTickets {
+                    address: user1.address(),
+                },
+            )
+            .unwrap();
+        assert_eq!(user1_tickets.tickets, tickets_user1);
+
+        let user2_tickets: crate::msg::UserTicketsResponse = wasm
+            .query(
+                &contract_address,
+                &QueryMsg::GetUserNumberOfTickets {
+                    address: user2.address(),
+                },
+            )
+            .unwrap();
+        assert_eq!(user2_tickets.tickets, tickets_user2);
+    }
+
+    #[test]
+    fn test_rewards_distribution() {
+        let app = CoreumTestApp::new();
+        let admin = app
+            .init_account(&[coin(100_000_000_000_000_000_000u128, FEE_DENOM)])
+            .unwrap();
+        let user = app
+            .init_account(&[coin(100_000_000_000_000_000_000u128, FEE_DENOM)])
+            .unwrap();
+        let validator_creator = app
+            .init_account(&[coin(100_000_000_000_000_000_000u128, FEE_DENOM)])
+            .unwrap();
+
+        let wasm = Wasm::new(&app);
+        let validator_address = create_validator(&app, &validator_creator);
+
+        let contract_address = store_and_instantiate(
+            &wasm,
+            &admin,
+            validator_address,
+            Uint128::from(1000u128),
+            Uint128::from(TICKET_PRICE),
+            Uint128::from(1000u128),
+        );
+
+        // Buy tickets
+        let number_of_tickets = Uint128::from(1000u128);
+        let payment = number_of_tickets * Uint128::from(TICKET_PRICE);
+        wasm.execute(
+            &contract_address,
+            &ExecuteMsg::BuyTicket { number_of_tickets },
+            &[coin(payment.u128(), FEE_DENOM)],
+            &user,
+        )
+        .unwrap();
+
+        // Add bonus rewards
+        let bonus_amount = Uint128::from(1000000u128);
+        wasm.execute(
+            &contract_address,
+            &ExecuteMsg::AddBonusRewardToThePool {
+                amount: bonus_amount,
+            },
+            &[coin(bonus_amount.u128(), FEE_DENOM)],
+            &admin,
+        )
+        .unwrap();
+
+        // Get initial user balance
+        let bank = Bank::new(&app);
+        let initial_balance = bank
+            .query_balance(&QueryBalanceRequest {
+                address: user.address(),
+                denom: FEE_DENOM.to_string(),
+            })
+            .unwrap()
+            .balance
+            .unwrap()
+            .amount
+            .parse::<u128>()
+            .unwrap();
+
+        // Select winner
+        wasm.execute(
+            &contract_address,
+            &ExecuteMsg::SelectWinnerAndUndelegate {
+                winner_address: user.address(),
+            },
+            &[],
+            &admin,
+        )
+        .unwrap();
+
+        // Advance time to complete undelegation
+        app.increase_time(SECONDS_PER_DAY * UNDELEGATION_DAYS + 1000);
+
+        // Send funds to winner
+        wasm.execute(
+            &contract_address,
+            &ExecuteMsg::SendFundsToWinner {},
+            &[],
+            &admin,
+        )
+        .unwrap();
+
+        // Get final user balance
+        let final_balance = bank
+            .query_balance(&QueryBalanceRequest {
+                address: user.address(),
+                denom: FEE_DENOM.to_string(),
+            })
+            .unwrap()
+            .balance
+            .unwrap()
+            .amount
+            .parse::<u128>()
+            .unwrap();
+
+        // Calculate received rewards
+        let received_rewards = final_balance - initial_balance;
+
+        // Get expected rewards from contract
+        let winner: crate::msg::WinnerResponse = wasm
+            .query(&contract_address, &QueryMsg::GetWinner {})
+            .unwrap();
+
+        // Verify winner address
+        assert_eq!(winner.winner, Some(user.address()));
+
+        // Verify rewards amount
+        // The received rewards should be equal to the accumulated rewards + bonus rewards
+        assert_eq!(
+            Uint128::from(received_rewards),
+            winner.rewards,
+            "Expected rewards: {}, Received rewards: {}",
+            winner.rewards,
+            received_rewards
+        );
+
+        // Verify the rewards include both accumulated and bonus rewards
+
+        // Get accumulated rewards at undelegation
+        let accumulated_rewards_at_undelegation: crate::msg::AccumulatedRewardsAtUndelegationResponse = wasm
+            .query(&contract_address, &QueryMsg::GetAccumulatedRewardsAtUndelegation {})
+            .unwrap();
+
+        let bonus_rewards: crate::msg::BonusRewardsResponse = wasm
+            .query(&contract_address, &QueryMsg::GetBonusRewards {})
+            .unwrap();
+
+        assert_eq!(
+            winner.rewards,
+            accumulated_rewards_at_undelegation.accumulated_rewards + bonus_rewards.bonus_rewards,
+            "Total rewards should be sum of accumulated and bonus rewards"
+        );
+    }
+
+    #[test]
+    fn test_burn_tickets_and_refund() {
+        let app = CoreumTestApp::new();
+        let admin = app
+            .init_account(&[coin(100_000_000_000_000_000_000u128, FEE_DENOM)])
+            .unwrap();
+        let user = app
+            .init_account(&[coin(100_000_000_000_000_000_000u128, FEE_DENOM)])
+            .unwrap();
+        let validator_creator = app
+            .init_account(&[coin(100_000_000_000_000_000_000u128, FEE_DENOM)])
+            .unwrap();
+
+        let wasm = Wasm::new(&app);
+        let bank = Bank::new(&app);
+        let validator_address = create_validator(&app, &validator_creator);
+
+        let contract_address = store_and_instantiate(
+            &wasm,
+            &admin,
+            validator_address,
+            Uint128::from(1000u128),
+            Uint128::from(TICKET_PRICE),
+            Uint128::from(1000u128),
+        );
+
+        // Buy tickets (we need to buy all tickets to trigger the state transition)
+        let number_of_tickets = Uint128::from(1000u128);
+        let payment = number_of_tickets * Uint128::from(TICKET_PRICE);
+
+        // Get initial balance
+        let initial_balance = bank
+            .query_balance(&QueryBalanceRequest {
+                address: user.address(),
+                denom: FEE_DENOM.to_string(),
+            })
+            .unwrap()
+            .balance
+            .unwrap()
+            .amount
+            .parse::<u128>()
+            .unwrap();
+
+        wasm.execute(
+            &contract_address,
+            &ExecuteMsg::BuyTicket { number_of_tickets },
+            &[coin(payment.u128(), FEE_DENOM)],
+            &user,
+        )
+        .unwrap();
+
+        // Verify tickets were received
+        let user_tickets: crate::msg::UserTicketsResponse = wasm
+            .query(
+                &contract_address,
+                &QueryMsg::GetUserNumberOfTickets {
+                    address: user.address(),
+                },
+            )
+            .unwrap();
+        assert_eq!(user_tickets.tickets, number_of_tickets);
+
+        // Check the delegate amount; should tickets * ticket_price
+        let contract_delegated_tokens: crate::msg::DelegatedAmountResponse = wasm
+            .query(&contract_address, &QueryMsg::GetDelegatedAmount {})
+            .unwrap();
+        println!("contract_delegated_tokens: {:?}", contract_delegated_tokens);
+
+        // Select winner and complete undelegation
+        wasm.execute(
+            &contract_address,
+            &ExecuteMsg::SelectWinnerAndUndelegate {
+                winner_address: user.address(),
+            },
+            &[],
+            &admin,
+        )
+        .unwrap();
+
+        // Wait for undelegation period to complete
+        app.increase_time(SECONDS_PER_DAY * UNDELEGATION_DAYS + 10000);
+
+        // Check the delegate amount; should be 0
+        let contract_delegated_tokens_after_undelegation: crate::msg::DelegatedAmountResponse =
+            wasm.query(&contract_address, &QueryMsg::GetDelegatedAmount {})
+                .unwrap();
+        println!(
+            "contract_delegated_tokens_after_undelegation: {:?}",
+            contract_delegated_tokens_after_undelegation
+        );
+
+        // Send funds to winner
+        wasm.execute(
+            &contract_address,
+            &ExecuteMsg::SendFundsToWinner {},
+            &[],
+            &admin,
+        )
+        .unwrap();
+
+        // Burn tickets
+        let ticket_denom = format!("u{}-{}", TICKET_TOKEN.to_lowercase(), contract_address);
+        let tickets_to_burn = CosmoCoin {
+            amount: number_of_tickets.pow(TICKET_PRECISION),
+            denom: ticket_denom,
+        };
+
+        wasm.execute(
+            &contract_address,
+            &ExecuteMsg::BurnTickets { number_of_tickets },
+            &[tickets_to_burn],
+            &user,
+        )
+        .unwrap();
+
+        // Verify no tickets left
+        let user_tickets: crate::msg::UserTicketsResponse = wasm
+            .query(
+                &contract_address,
+                &QueryMsg::GetUserNumberOfTickets {
+                    address: user.address(),
+                },
+            )
+            .unwrap();
+        assert_eq!(user_tickets.tickets, Uint128::zero());
+
+        // Verify refund was received
+        let final_balance = bank
+            .query_balance(&QueryBalanceRequest {
+                address: user.address(),
+                denom: FEE_DENOM.to_string(),
+            })
+            .unwrap()
+            .balance
+            .unwrap()
+            .amount
+            .parse::<u128>()
+            .unwrap();
+
+        // The final balance should be close to initial balance (minus gas fees)
+        let expected_refund = payment.u128();
+        let actual_refund = final_balance - initial_balance;
+        assert!(
+            actual_refund >= expected_refund * 99 / 100, // Allow for 1% gas fee
+            "Expected refund: {}, Actual refund: {}",
+            expected_refund,
+            actual_refund
+        );
     }
 }
