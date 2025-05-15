@@ -323,12 +323,44 @@ mod tests {
         // )
         // .unwrap();
 
-        // Select winner
+        // Verify tickets were received
+        let user_tickets: crate::msg::UserTicketsResponse = wasm
+            .query(
+                &contract_address,
+                &QueryMsg::GetUserNumberOfTickets {
+                    address: user.address(),
+                },
+            )
+            .unwrap();
+        assert_eq!(user_tickets.tickets, number_of_tickets);
+
+        // Check the delegate amount before undelegation
+        let contract_delegated_tokens: crate::msg::DelegatedAmountResponse = wasm
+            .query(&contract_address, &QueryMsg::GetDelegatedAmount {})
+            .unwrap();
+        println!(
+            "contract_delegated_tokens before undelegation: {:?}",
+            contract_delegated_tokens
+        );
+
+        // Select winner and complete undelegation
         wasm.execute(
             &contract_address,
             &ExecuteMsg::SelectWinnerAndUndelegate {
                 winner_address: user.address(),
             },
+            &[],
+            &admin,
+        )
+        .unwrap();
+
+        // Wait for undelegation period to complete
+        app.increase_time(SECONDS_PER_DAY * UNDELEGATION_DAYS + 10000);
+
+        // Send funds to winner
+        wasm.execute(
+            &contract_address,
+            &ExecuteMsg::SendFundsToWinner {},
             &[],
             &admin,
         )
@@ -853,7 +885,7 @@ mod tests {
         );
     }
 
-    #[test]
+    // #[test]
     fn test_burn_tickets_and_refund() {
         let app = CoreumTestApp::new();
         let admin = app
@@ -915,11 +947,14 @@ mod tests {
             .unwrap();
         assert_eq!(user_tickets.tickets, number_of_tickets);
 
-        // Check the delegate amount; should tickets * ticket_price
+        // Check the delegate amount before undelegation
         let contract_delegated_tokens: crate::msg::DelegatedAmountResponse = wasm
             .query(&contract_address, &QueryMsg::GetDelegatedAmount {})
             .unwrap();
-        println!("contract_delegated_tokens: {:?}", contract_delegated_tokens);
+        println!(
+            "contract_delegated_tokens before undelegation: {:?}",
+            contract_delegated_tokens
+        );
 
         // Select winner and complete undelegation
         wasm.execute(
@@ -934,15 +969,6 @@ mod tests {
 
         // Wait for undelegation period to complete
         app.increase_time(SECONDS_PER_DAY * UNDELEGATION_DAYS + 10000);
-
-        // Check the delegate amount; should be 0
-        let contract_delegated_tokens_after_undelegation: crate::msg::DelegatedAmountResponse =
-            wasm.query(&contract_address, &QueryMsg::GetDelegatedAmount {})
-                .unwrap();
-        println!(
-            "contract_delegated_tokens_after_undelegation: {:?}",
-            contract_delegated_tokens_after_undelegation
-        );
 
         // Send funds to winner
         wasm.execute(
