@@ -214,7 +214,7 @@ pub fn execute_buy_ticket(
         sender: env.contract.address.to_string(),
         coin: Some(Coin {
             denom: TICKET_DENOM.load(deps.storage)?,
-            amount: (number_of_tickets.pow(TICKET_PRECISION)).to_string(),
+            amount: (number_of_tickets * Uint128::from(10u128).pow(TICKET_PRECISION)).to_string(),
         }),
         recipient: info.sender.to_string(),
     };
@@ -453,9 +453,9 @@ pub fn execute_burn_tickets(
         .find(|coin| coin.denom == ticket_denom)
         .ok_or(ContractError::NoFunds {})?;
 
-    if payment.amount < number_of_tickets.pow(TICKET_PRECISION) {
+    if payment.amount < number_of_tickets * Uint128::from(10u128).pow(TICKET_PRECISION) {
         return Err(ContractError::InsufficientFunds {
-            required: number_of_tickets.pow(TICKET_PRECISION),
+            required: number_of_tickets * Uint128::from(10u128).pow(TICKET_PRECISION),
             provided: payment.amount,
         });
     }
