@@ -102,6 +102,10 @@ pub enum QueryMsg {
     /// Get delegated amount
     #[returns(DelegatedAmountResponse)]
     GetDelegatedAmount {},
+
+    /// Get accumulated rewards at undelegation
+    #[returns(AccumulatedRewardsAtUndelegationResponse)]
+    GetAccumulatedRewardsAtUndelegation {},
 }
 
 /// Migration message for contract upgrades
@@ -112,6 +116,11 @@ pub struct BalanceResponse {
 
 #[cw_serde]
 pub struct AccumulatedRewardsResponse {
+    pub accumulated_rewards: Uint128,
+}
+
+#[cw_serde]
+pub struct AccumulatedRewardsAtUndelegationResponse {
     pub accumulated_rewards: Uint128,
 }
 

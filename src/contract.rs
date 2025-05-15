@@ -9,16 +9,18 @@ use std::str::FromStr;
 
 use crate::error::ContractError;
 use crate::msg::{
-    AccumulatedRewardsResponse, BonusRewardsResponse, ClaimInfo, ClaimsResponse,
-    CurrentStateResponse, DelegatedAmountResponse, DraftTvlResponse, ExecuteMsg, InstantiateMsg,
-    ParticipantInfo, ParticipantsResponse, QueryMsg, TicketHoldersResponse, TicketsSoldResponse,
-    TotalBurnedResponse, UserTicketsResponse, UserWinChanceResponse, WinnerResponse,
+    AccumulatedRewardsAtUndelegationResponse, AccumulatedRewardsResponse, BonusRewardsResponse,
+    ClaimInfo, ClaimsResponse, CurrentStateResponse, DelegatedAmountResponse, DraftTvlResponse,
+    ExecuteMsg, InstantiateMsg, ParticipantInfo, ParticipantsResponse, QueryMsg,
+    TicketHoldersResponse, TicketsSoldResponse, TotalBurnedResponse, UserTicketsResponse,
+    UserWinChanceResponse, WinnerResponse,
 };
 use crate::state::{
     all_tickets_burned, calculate_win_chance, decrease_ticket_holder, get_draft_tvl,
     increment_tickets_burned, increment_tickets_sold, initialize_storage,
-    should_close_ticket_sales, update_claim, update_ticket_holder, Config, DrawState, CLAIMS,
-    CONFIG, TICKET_DENOM, TICKET_HOLDERS, TOTAL_TICKETS_BURNED, TOTAL_TICKETS_SOLD,
+    should_close_ticket_sales, update_claim, update_ticket_holder, Config, DrawState,
+    ACCUMALTED_REWARDS_AT_UNDELEGATION, CLAIMS, CONFIG, TICKET_DENOM, TICKET_HOLDERS,
+    TOTAL_TICKETS_BURNED, TOTAL_TICKETS_SOLD,
 };
 
 use coreum_wasm_sdk::types::cosmos::base::v1beta1::Coin;
@@ -285,6 +287,9 @@ pub fn execute_select_winner_and_undelegate(
 
     // Step 5: Query accumulated rewards
     let accumulated_rewards = query_accumulated_rewards(deps.as_ref(), &env)?;
+
+    ACCUMALTED_REWARDS_AT_UNDELEGATION
+        .save(deps.storage, &accumulated_rewards.accumulated_rewards)?;
 
     let total_rewards = accumulated_rewards.accumulated_rewards + config.bonus_rewards;
 
@@ -638,6 +643,9 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
         QueryMsg::GetAccumulatedRewards {} => {
             to_json_binary(&query_accumulated_rewards(deps, &_env)?)
         }
+        QueryMsg::GetAccumulatedRewardsAtUndelegation {} => {
+            to_json_binary(&query_accumulated_rewards_at_undelegation(deps)?)
+        }
         QueryMsg::GetDraftTvl {} => to_json_binary(&query_draft_tvl(deps)?),
         QueryMsg::GetTicketHolders {} => to_json_binary(&query_ticket_holders(deps)?),
         QueryMsg::GetUserNumberOfTickets { address } => {
@@ -653,6 +661,15 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
 }
 
 // Query functions
+
+fn query_accumulated_rewards_at_undelegation(
+    deps: Deps,
+) -> StdResult<AccumulatedRewardsAtUndelegationResponse> {
+    let accumulated_rewards = ACCUMALTED_REWARDS_AT_UNDELEGATION.load(deps.storage)?;
+    Ok(AccumulatedRewardsAtUndelegationResponse {
+        accumulated_rewards,
+    })
+}
 
 fn query_accumulated_rewards(deps: Deps, env: &Env) -> StdResult<AccumulatedRewardsResponse> {
     let config = CONFIG.load(deps.storage)?;

@@ -36,12 +36,15 @@ pub const TOTAL_TICKETS_BURNED: Item<Uint128> = Item::new("total_tickets_burned"
 pub const CLAIMS: Map<&Addr, Uint128> = Map::new("claims"); // Address -> Amount claimed
 
 pub const TICKET_DENOM: Item<String> = Item::new("ticket_denom");
+pub const ACCUMALTED_REWARDS_AT_UNDELEGATION: Item<Uint128> =
+    Item::new("accumalted_rewards_at_undelegation");
 
 // Initialize the storage
 pub fn initialize_storage(storage: &mut dyn Storage) -> StdResult<()> {
     TOTAL_TICKETS_SOLD.save(storage, &Uint128::zero())?;
     TOTAL_TICKETS_BURNED.save(storage, &Uint128::zero())?;
     TICKET_DENOM.save(storage, &"".to_string())?;
+    ACCUMALTED_REWARDS_AT_UNDELEGATION.save(storage, &Uint128::zero())?;
     Ok(())
 }
 
