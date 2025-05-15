@@ -195,7 +195,7 @@ pub fn execute_buy_ticket(
     if user_tickets + number_of_tickets > max_tickets_per_user {
         return Err(ContractError::MaxTicketsPerUserReached {
             requested: number_of_tickets,
-            available: max_tickets_per_user - user_tickets,
+            available: max_tickets_per_user.saturating_sub(user_tickets),
         });
     }
 
