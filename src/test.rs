@@ -1132,4 +1132,80 @@ mod tests {
             .unwrap();
         assert_eq!(user_tickets.tickets, number_of_tickets);
     }
+
+    #[test]
+    fn test_ticket_purchase_limit() {
+        let app = CoreumTestApp::new();
+        let admin = app
+            .init_account(&[coin(100_000_000_000_000_000_000u128, FEE_DENOM)])
+            .unwrap();
+        let user = app
+            .init_account(&[coin(100_000_000_000_000_000_000u128, FEE_DENOM)])
+            .unwrap();
+        let validator_creator = app
+            .init_account(&[coin(100_000_000_000_000_000_000u128, FEE_DENOM)])
+            .unwrap();
+
+        let wasm = Wasm::new(&app);
+        let bank = Bank::new(&app);
+        let validator_address = create_validator(&app, &validator_creator);
+
+        // Set max tickets per user to 3
+        let max_tickets = Uint128::from(3u128);
+        let contract_address = store_and_instantiate(
+            &wasm,
+            &admin,
+            validator_address,
+            Uint128::from(1000u128),
+            Uint128::from(TICKET_PRICE),
+            max_tickets,
+        );
+
+        // Buy tickets one by one
+        for i in 1u32..=3 {
+            let number_of_tickets = Uint128::from(1u128);
+            let payment = number_of_tickets * Uint128::from(TICKET_PRICE);
+
+            wasm.execute(
+                &contract_address,
+                &ExecuteMsg::BuyTicket { number_of_tickets },
+                &[coin(payment.u128(), FEE_DENOM)],
+                &user,
+            )
+            .unwrap();
+
+            // Verify ticket count after each purchase
+            let user_tickets: crate::msg::UserTicketsResponse = wasm
+                .query(
+                    &contract_address,
+                    &QueryMsg::GetUserNumberOfTickets {
+                        address: user.address(),
+                    },
+                )
+                .unwrap();
+            assert_eq!(user_tickets.tickets, Uint128::from(i as u128));
+        }
+
+        // Try to buy one more ticket (should fail)
+        let result = wasm.execute(
+            &contract_address,
+            &ExecuteMsg::BuyTicket {
+                number_of_tickets: Uint128::from(1u128),
+            },
+            &[coin(TICKET_PRICE, FEE_DENOM)],
+            &user,
+        );
+        assert!(result.is_err());
+
+        // Verify final ticket count
+        let user_tickets: crate::msg::UserTicketsResponse = wasm
+            .query(
+                &contract_address,
+                &QueryMsg::GetUserNumberOfTickets {
+                    address: user.address(),
+                },
+            )
+            .unwrap();
+        assert_eq!(user_tickets.tickets, max_tickets);
+    }
 }

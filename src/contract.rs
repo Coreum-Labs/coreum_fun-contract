@@ -189,7 +189,8 @@ pub fn execute_buy_ticket(
 
     // Step 4: Verify the user have less tickets than the max allowed (counting the new purchase)
     let balance = query_ticket_balance(deps.as_ref(), info.sender.to_string())?;
-    let user_tickets: Uint128 = Uint128::from_str(&balance.balance)?;
+    let user_tickets: Uint128 =
+        Uint128::from_str(&balance.balance)? / Uint128::from(10u128).pow(TICKET_PRECISION);
     let max_tickets_per_user = CONFIG.load(deps.storage)?.max_tickets_per_user;
 
     if user_tickets + number_of_tickets > max_tickets_per_user {
