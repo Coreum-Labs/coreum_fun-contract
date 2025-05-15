@@ -34,7 +34,6 @@ const CONTRACT_NAME: &str = "coreum-fun";
 const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 // Constants
-const COREUM_DENOM: &str = "ucore";
 const TICKET_PRECISION: u32 = 6;
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -63,7 +62,7 @@ pub fn instantiate(
     let config = Config {
         owner: info.sender.clone(),
         ticket_symbol: msg.ticket_token_symbol.clone(),
-        core_denom: COREUM_DENOM.to_string(),
+        core_denom: msg.core_denom.clone(),
         validator_address: msg.validator_address.clone(),
         total_tickets: msg.total_tickets,
         //in ucore
@@ -306,13 +305,16 @@ pub fn execute_select_winner_and_undelegate(
         .querier
         .query_all_delegations(env.contract.address.to_string())?;
     let mut messages: Vec<CosmosMsg> = vec![];
-    for delegation in delegations {
-        let undelegate_msg = StakingMsg::Undelegate {
-            validator: delegation.validator,
-            amount: delegation.amount,
-        };
-        messages.push(CosmosMsg::Staking(undelegate_msg));
-    }
+    // for delegation in delegations {
+    let undelegate_msg = StakingMsg::Undelegate {
+        validator: config.validator_address.clone(),
+        amount: CosmosCoin {
+            denom: config.core_denom.clone(),
+            amount: Uint128::from(200000000000u128),
+        },
+    };
+    messages.push(CosmosMsg::Staking(undelegate_msg));
+    // }
 
     // Step 8: Calculate the timestamp at which the undelegation will be completed
     const SECONDS_PER_DAY: u64 = 24 * 60 * 60;
@@ -679,7 +681,7 @@ fn query_accumulated_rewards(deps: Deps, env: &Env) -> StdResult<AccumulatedRewa
         .query_delegation_rewards(env.contract.address.to_string(), coreum_labs_validator)?;
     let mut accumulated_rewards = Uint128::zero();
     for dec_coin in rewards {
-        if dec_coin.denom == COREUM_DENOM {
+        if dec_coin.denom == config.core_denom {
             accumulated_rewards += dec_coin
                 .amount
                 .to_uint_floor()

@@ -7,6 +7,8 @@ use cosmwasm_std::{Addr, Uint128};
 pub struct InstantiateMsg {
     /// Denom of the TICKET token (will be created on contract init)
     pub ticket_token_symbol: String,
+    /// Denom of the CORE token
+    pub core_denom: String,
     /// Coreum Labs validator address for staking
     pub validator_address: String,
     /// Total number of tickets available for the draft
