@@ -32,7 +32,7 @@ use coreum_wasm_sdk::types::coreum::asset::ft::v1::{
 
 use cosmrs::proto::cosmos::bank::v1beta1::QueryDenomOwnersRequest;
 use cosmrs::proto::cosmos::bank::v1beta1::QueryDenomOwnersResponse;
-
+use cosmrs::proto::cosmos::base::query::v1beta1::PageRequest;
 // Version info for migration
 const CONTRACT_NAME: &str = "coreum-fun";
 const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -794,10 +794,18 @@ fn query_ticket_holders(deps: Deps) -> StdResult<TicketHoldersResponse> {
     let mut holders = vec![];
     let total_tickets_sold = TOTAL_TICKETS_SOLD.load(deps.storage)?;
     let ticket_denom = TICKET_DENOM.load(deps.storage)?;
+    let config = CONFIG.load(deps.storage)?;
+    let total_tickets = config.total_tickets.to_string().parse::<u64>().unwrap();
 
     let request = QueryDenomOwnersRequest {
         denom: ticket_denom.clone(),
-        pagination: None,
+        pagination: Some(PageRequest {
+            key: vec![],
+            offset: 0,
+            limit: total_tickets,
+            count_total: false,
+            reverse: false,
+        }),
     };
     let request_binary = Binary::from(request.encode_to_vec());
     let response_binary = deps.querier.query_grpc(
