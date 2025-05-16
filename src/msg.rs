@@ -44,6 +44,9 @@ pub enum ExecuteMsg {
 
     /// Send funds to a recipient
     SendFundsToWinner {},
+
+    /// Transfer token admin
+    TransferTokenAdmin { new_admin: String },
 }
 
 #[cw_serde]
@@ -130,6 +133,7 @@ pub struct AccumulatedRewardsAtUndelegationResponse {
     pub accumulated_rewards: Uint128,
 }
 
+#[cw_serde]
 pub struct MigrateMsg {
     pub new_validator_address: Option<String>,
 }
