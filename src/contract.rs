@@ -27,9 +27,10 @@ use crate::state::{
 use coreum_wasm_sdk::types::cosmos::base::v1beta1::Coin;
 
 use coreum_wasm_sdk::types::coreum::asset::ft::v1::{
-    MsgIssue, MsgMint, QueryBalanceRequest, QueryBalanceResponse,
+    MsgBurn, MsgIssue, MsgMint, QueryBalanceRequest, QueryBalanceResponse,
 };
 
+use coreum_wasm_sdk::types::cosmos::bank::v1beta1::MsgSend;
 use cosmrs::proto::cosmos::bank::v1beta1::QueryDenomOwnersRequest;
 use cosmrs::proto::cosmos::bank::v1beta1::QueryDenomOwnersResponse;
 use cosmrs::proto::cosmos::base::query::v1beta1::PageRequest;
@@ -146,7 +147,7 @@ pub fn execute(
             execute_update_draw_state(deps, env, info, new_state)
         }
         ExecuteMsg::SendFunds { recipient, amount } => {
-            execute_send_funds(deps, info, recipient, amount)
+            execute_send_funds(deps, env, info, recipient, amount)
         }
         ExecuteMsg::SetUndelegationTimestamp { timestamp } => {
             execute_set_undelegation_timestamp(deps, env, info, timestamp)
@@ -388,13 +389,17 @@ pub fn execute_send_funds_to_winner(
     let total_rewards = config.accumulated_rewards + config.bonus_rewards;
 
     // Step 6: Send the rewards to the winner
-    let send_rewards_msg = CosmosMsg::Bank(BankMsg::Send {
-        to_address: winner_addr.to_string(),
-        amount: vec![CosmosCoin {
-            denom: config.core_denom.clone(),
-            amount: total_rewards,
-        }],
-    });
+    let send_rewards_msg = CosmosMsg::Any(
+        MsgSend {
+            from_address: env.contract.address.to_string(),
+            to_address: winner_addr.to_string(),
+            amount: vec![Coin {
+                denom: config.core_denom.clone(),
+                amount: total_rewards.to_string(),
+            }],
+        }
+        .to_any(),
+    );
 
     // Return response with all actions
     Ok(Response::new()
@@ -470,13 +475,13 @@ pub fn execute_burn_tickets(
     }
 
     //Step 4: The contract now burns the the TICKET tokens
-    // let burn_msg = MsgBurn {
-    //     sender: env.contract.address.to_string(),
-    //     coin: Some(Coin {
-    //         denom: TICKET_DENOM.load(deps.storage)?,
-    //         amount: number_of_tickets.to_string(),
-    //     }),
-    // };
+    let burn_msg = MsgBurn {
+        sender: env.contract.address.to_string(),
+        coin: Some(Coin {
+            denom: TICKET_DENOM.load(deps.storage)?,
+            amount: (number_of_tickets * Uint128::from(10u128).pow(TICKET_PRECISION)).to_string(),
+        }),
+    };
 
     // Step 4: Calculate the refund amount (original investment)
     //We use the users_tickets instead of the requested number of tickets
@@ -516,7 +521,7 @@ pub fn execute_burn_tickets(
 
     // Return the response with all actions
     Ok(Response::new()
-        // .add_message(CosmosMsg::Any(burn_msg.to_any()))
+        .add_message(CosmosMsg::Any(burn_msg.to_any()))
         .add_message(send_refund_msg)
         .add_attributes(attrs))
 }
@@ -584,6 +589,7 @@ pub fn execute_update_draw_state(
 
 pub fn execute_send_funds(
     deps: DepsMut,
+    env: Env,
     info: MessageInfo,
     recipient: String,
     amount: Uint128,
@@ -596,13 +602,17 @@ pub fn execute_send_funds(
 
     // Create the send message
     let recipient_str = recipient.clone();
-    let send_msg = CosmosMsg::Bank(BankMsg::Send {
-        to_address: recipient,
-        amount: vec![CosmosCoin {
-            denom: config.core_denom,
-            amount,
-        }],
-    });
+    let send_msg = CosmosMsg::Any(
+        MsgSend {
+            from_address: env.contract.address.to_string(),
+            to_address: recipient,
+            amount: vec![Coin {
+                denom: config.core_denom.clone(),
+                amount: amount.to_string(),
+            }],
+        }
+        .to_any(),
+    );
 
     Ok(Response::new()
         .add_message(send_msg)
