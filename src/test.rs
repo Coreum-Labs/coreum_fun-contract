@@ -355,7 +355,42 @@ mod tests {
         .unwrap();
 
         // Wait for undelegation period to complete
-        app.increase_time(SECONDS_PER_DAY * UNDELEGATION_DAYS + 100000000);
+        app.increase_time(SECONDS_PER_DAY * UNDELEGATION_DAYS + 10000000);
+
+        // Add bonus rewards
+        let bonus_amount = Uint128::from(1000000u128); // 1 COREUM
+        wasm.execute(
+            &contract_address,
+            &ExecuteMsg::AddBonusRewardToThePool {
+                amount: bonus_amount,
+            },
+            &[coin(bonus_amount.u128(), FEE_DENOM)],
+            &admin,
+        )
+        .unwrap();
+
+        // Check contract state and balances before sending funds
+        let state: crate::msg::CurrentStateResponse = wasm
+            .query(&contract_address, &QueryMsg::GetCurrentState {})
+            .unwrap();
+        println!("Contract state before sending funds: {:?}", state.state);
+
+        let delegated: crate::msg::DelegatedAmountResponse = wasm
+            .query(&contract_address, &QueryMsg::GetDelegatedAmount {})
+            .unwrap();
+        println!("Delegated amount before sending funds: {:?}", delegated);
+
+        let bank = Bank::new(&app);
+        let contract_balance = bank
+            .query_balance(&QueryBalanceRequest {
+                address: contract_address.clone(),
+                denom: FEE_DENOM.to_string(),
+            })
+            .unwrap();
+        println!(
+            "Contract balance before sending funds: {:?}",
+            contract_balance
+        );
 
         // Send funds to winner
         wasm.execute(
@@ -970,6 +1005,41 @@ mod tests {
         // Wait for undelegation period to complete
         app.increase_time(SECONDS_PER_DAY * UNDELEGATION_DAYS + 10000000);
 
+        // Add bonus rewards
+        let bonus_amount = Uint128::from(1000000u128); // 1 COREUM
+        wasm.execute(
+            &contract_address,
+            &ExecuteMsg::AddBonusRewardToThePool {
+                amount: bonus_amount,
+            },
+            &[coin(bonus_amount.u128(), FEE_DENOM)],
+            &admin,
+        )
+        .unwrap();
+
+        // Check contract state and balances before sending funds
+        let state: crate::msg::CurrentStateResponse = wasm
+            .query(&contract_address, &QueryMsg::GetCurrentState {})
+            .unwrap();
+        println!("Contract state before sending funds: {:?}", state.state);
+
+        let delegated: crate::msg::DelegatedAmountResponse = wasm
+            .query(&contract_address, &QueryMsg::GetDelegatedAmount {})
+            .unwrap();
+        println!("Delegated amount before sending funds: {:?}", delegated);
+
+        let bank = Bank::new(&app);
+        let contract_balance = bank
+            .query_balance(&QueryBalanceRequest {
+                address: contract_address.clone(),
+                denom: FEE_DENOM.to_string(),
+            })
+            .unwrap();
+        println!(
+            "Contract balance before sending funds: {:?}",
+            contract_balance
+        );
+
         // Send funds to winner
         wasm.execute(
             &contract_address,
@@ -1470,6 +1540,23 @@ mod tests {
             contract_balance
         );
 
+        let accumulated_rewards: crate::msg::AccumulatedRewardsAtUndelegationResponse = wasm
+            .query(
+                &contract_address,
+                &QueryMsg::GetAccumulatedRewardsAtUndelegation {},
+            )
+            .unwrap();
+
+        println!("accumulated_rewards: {:?}", accumulated_rewards);
+
+        let bonus_rewards: crate::msg::BonusRewardsResponse = wasm
+            .query(&contract_address, &QueryMsg::GetBonusRewards {})
+            .unwrap();
+
+        let total_rewards = accumulated_rewards.accumulated_rewards + bonus_rewards.bonus_rewards;
+
+        println!("total_rewards: {:?}", total_rewards);
+
         // Send funds to winner
         wasm.execute(
             &contract_address,
@@ -1574,17 +1661,6 @@ mod tests {
         // 2. Minus ticket price (TICKET_PRICE)
         // 3. Plus accumulated rewards
         // 4. Plus bonus rewards
-        let accumulated_rewards: crate::msg::AccumulatedRewardsAtUndelegationResponse = wasm
-            .query(
-                &contract_address,
-                &QueryMsg::GetAccumulatedRewardsAtUndelegation {},
-            )
-            .unwrap();
-
-        let bonus_rewards: crate::msg::BonusRewardsResponse = wasm
-            .query(&contract_address, &QueryMsg::GetBonusRewards {})
-            .unwrap();
-
         let expected_winner_balance = 100_000_000_000_000_000_000u128
             + accumulated_rewards.accumulated_rewards.u128()
             + bonus_rewards.bonus_rewards.u128();
