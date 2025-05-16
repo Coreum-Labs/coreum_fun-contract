@@ -27,13 +27,15 @@ use crate::state::{
 use coreum_wasm_sdk::types::cosmos::base::v1beta1::Coin;
 
 use coreum_wasm_sdk::types::coreum::asset::ft::v1::{
-    MsgBurn, MsgIssue, MsgMint, QueryBalanceRequest, QueryBalanceResponse,
+    MsgBurn, MsgIssue, MsgMint, MsgTransferAdmin, QueryBalanceRequest, QueryBalanceResponse,
 };
 
 use coreum_wasm_sdk::types::cosmos::bank::v1beta1::MsgSend;
 use cosmrs::proto::cosmos::bank::v1beta1::QueryDenomOwnersRequest;
 use cosmrs::proto::cosmos::bank::v1beta1::QueryDenomOwnersResponse;
 use cosmrs::proto::cosmos::base::query::v1beta1::PageRequest;
+
+use crate::msg::MigrateMsg;
 // Version info for migration
 const CONTRACT_NAME: &str = "coreum-fun";
 const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -151,6 +153,9 @@ pub fn execute(
         }
         ExecuteMsg::SetUndelegationTimestamp { timestamp } => {
             execute_set_undelegation_timestamp(deps, env, info, timestamp)
+        }
+        ExecuteMsg::TransferTokenAdmin { new_admin } => {
+            transfer_token_admin(deps, env, info, new_admin)
         }
     }
 }
@@ -455,19 +460,6 @@ pub fn execute_burn_tickets(
         }
     }
 
-    // Step 2: Verify the user has enough tickets
-    // Not going to work because the user sent the tickets in the funds!
-    // let balance_before_burn = query_ticket_balance(deps.as_ref(), info.sender.to_string())?;
-    // let user_tickets_before_burn = Uint128::from_str(&balance_before_burn.balance)?;
-    // println!("user_tickets_before_burn: {}", user_tickets_before_burn);
-
-    // if user_tickets_before_burn < number_of_tickets.pow(TICKET_PRECISION) {
-    //     return Err(ContractError::NotEnoughTickets {
-    //         requested: number_of_tickets.pow(TICKET_PRECISION),
-    //         available: user_tickets_before_burn,
-    //     });
-    // }
-
     //Step3: Check if the user sent the correct amount of Ticket in the funds based on the number of tickets they want to burn
 
     let ticket_denom = TICKET_DENOM.load(deps.storage)?;
@@ -662,6 +654,31 @@ pub fn execute_set_undelegation_timestamp(
         ("action", "set_undelegation_timestamp"),
         ("timestamp", &timestamp.to_string()),
     ]))
+}
+
+pub fn transfer_token_admin(
+    deps: DepsMut,
+    env: Env,
+    _info: MessageInfo,
+    account: String,
+) -> Result<Response, ContractError> {
+    let denom = TICKET_DENOM.load(deps.storage)?;
+
+    let config = CONFIG.load(deps.storage)?;
+    if _info.sender != config.owner {
+        return Err(ContractError::Unauthorized {});
+    }
+
+    let transfer_admin = MsgTransferAdmin {
+        sender: env.contract.address.to_string(),
+        account,
+        denom: denom.clone(),
+    };
+
+    Ok(Response::new()
+        .add_attribute("method", "transfer_admin")
+        .add_attribute("denom", denom)
+        .add_message(CosmosMsg::Any(transfer_admin.to_any())))
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -953,34 +970,14 @@ fn query_delegated_amount(deps: Deps, env: &Env) -> StdResult<DelegatedAmountRes
     Ok(DelegatedAmountResponse { amount })
 }
 
-// #[cfg_attr(not(feature = "library"), entry_point)]
-// pub fn migrate(deps: DepsMut, _env: Env, msg: MigrateMsg) -> Result<Response, ContractError> {
-//     let version = cw2::get_contract_version(deps.storage)?;
-
-//     // Ensure we're migrating from the same contract
-//     if version.contract != CONTRACT_NAME {
-//         return Err(ContractError::InvalidMigration {
-//             current_name: version.contract,
-//             current_version: version.version,
-//         });
-//     }
-
-//     // Update contract version
-//     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
-
-//     // Update validator address if provided
-//     if let Some(new_validator) = msg.new_validator_address {
-//         // Validate the new validator address
-//         deps.api.addr_validate(&new_validator)?;
-
-//         CONFIG.update(deps.storage, |mut config| -> StdResult<_> {
-//             config.validator_address = new_validator.clone();
-//             Ok(config)
-//         })?;
-//     }
-
-//     Ok(Response::new()
-//         .add_attribute("action", "migrate")
-//         .add_attribute("from_version", version.version)
-//         .add_attribute("to_version", CONTRACT_VERSION))
-// }
+#[cfg_attr(not(feature = "library"), entry_point)]
+#[entry_point]
+pub fn migrate(deps: DepsMut, _env: Env, _msg: MigrateMsg) -> Result<Response, ContractError> {
+    let ver = cw2::get_contract_version(deps.storage)?;
+    if ver.contract != CONTRACT_NAME {
+        return Err(StdError::generic_err("Can only upgrade from same contract type").into());
+    }
+    // TODO Add migration logic, and version validation
+    set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
+    Ok(Response::default())
+}
