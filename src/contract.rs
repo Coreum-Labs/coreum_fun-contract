@@ -1,8 +1,9 @@
 use cosmwasm_std::{
     entry_point, to_json_binary, Addr, BankMsg, Binary, Coin as CosmosCoin, CosmosMsg, Deps,
-    DepsMut, Empty, Env, MessageInfo, Order, Response, StakingMsg, StdResult, Uint128,
+    DepsMut, Empty, Env, MessageInfo, Order, Response, StakingMsg, StdError, StdResult, Uint128,
 };
 use cw2::set_contract_version;
+use prost::Message;
 use std::str::FromStr;
 
 // Coreum imports
@@ -16,11 +17,11 @@ use crate::msg::{
     UserWinChanceResponse, WinnerResponse,
 };
 use crate::state::{
-    all_tickets_burned, calculate_win_chance, decrease_ticket_holder, get_draft_tvl,
+    all_tickets_burned, calculate_win_chance, decrease_ticket_holder_primary_market, get_draft_tvl,
     increment_tickets_burned, increment_tickets_sold, initialize_storage,
-    should_close_ticket_sales, update_claim, update_ticket_holder, Config, DrawState,
-    ACCUMALTED_REWARDS_AT_UNDELEGATION, CLAIMS, CONFIG, TICKET_DENOM, TICKET_HOLDERS,
-    TOTAL_TICKETS_BURNED, TOTAL_TICKETS_SOLD,
+    should_close_ticket_sales, update_claim, update_ticket_holder_primary_market, Config,
+    DrawState, ACCUMALTED_REWARDS_AT_UNDELEGATION, CLAIMS, CONFIG, TICKET_DENOM,
+    TICKET_HOLDERS_PRIMARY_MARKET, TOTAL_TICKETS_BURNED, TOTAL_TICKETS_SOLD,
 };
 
 use coreum_wasm_sdk::types::cosmos::base::v1beta1::Coin;
@@ -28,6 +29,9 @@ use coreum_wasm_sdk::types::cosmos::base::v1beta1::Coin;
 use coreum_wasm_sdk::types::coreum::asset::ft::v1::{
     MsgIssue, MsgMint, QueryBalanceRequest, QueryBalanceResponse,
 };
+
+use cosmrs::proto::cosmos::bank::v1beta1::QueryDenomOwnersRequest;
+use cosmrs::proto::cosmos::bank::v1beta1::QueryDenomOwnersResponse;
 
 // Version info for migration
 const CONTRACT_NAME: &str = "coreum-fun";
@@ -222,7 +226,7 @@ pub fn execute_buy_ticket(
 
     // Step 7: Update the contract internal state
     increment_tickets_sold(deps.storage, number_of_tickets)?;
-    update_ticket_holder(deps.storage, &info.sender, number_of_tickets)?;
+    update_ticket_holder_primary_market(deps.storage, &info.sender, number_of_tickets)?;
 
     // Step 8: Check if this was the last ticket - set draw_state=tickets_sold_out_accumulation_in_progress
     let tickets_str = number_of_tickets.to_string();
@@ -277,7 +281,8 @@ pub fn execute_select_winner_and_undelegate(
     }
 
     // Step 4: Verify the winner has tickets
-    let winner_tickets = TICKET_HOLDERS
+    //TODO: User could have bought tickets on the secondary market: use other function, get holders
+    let winner_tickets = TICKET_HOLDERS_PRIMARY_MARKET
         .may_load(deps.storage, &winner_addr)?
         .unwrap_or(Uint128::zero());
 
@@ -483,8 +488,8 @@ pub fn execute_burn_tickets(
         }],
     });
 
-    // Step 6: Update internal state - user tickets and total burned
-    decrease_ticket_holder(deps.storage, &info.sender, number_of_tickets)?;
+    // Step 6: Update internal state - user tickets and total burned (not ideal in terms of semantics cause tikets can switch hands)
+    decrease_ticket_holder_primary_market(deps.storage, &info.sender, number_of_tickets)?;
     increment_tickets_burned(deps.storage, number_of_tickets)?;
     update_claim(deps.storage, &info.sender, refund_amount)?;
 
@@ -640,7 +645,7 @@ pub fn execute_set_undelegation_timestamp(
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
         QueryMsg::Balance { account } => to_json_binary(&query_ticket_balance(deps, account)?),
-        QueryMsg::GetParticipants {} => to_json_binary(&query_participants(deps)?),
+        QueryMsg::GetParticipants {} => to_json_binary(&query_participants_primary_market(deps)?),
         QueryMsg::GetWinner {} => to_json_binary(&query_winner(deps)?),
         QueryMsg::GetCurrentState {} => to_json_binary(&query_current_state(deps)?),
         QueryMsg::GetNumberOfTicketsSold {} => to_json_binary(&query_number_of_tickets_sold(deps)?),
@@ -709,12 +714,12 @@ fn query_ticket_balance(deps: Deps, account: String) -> StdResult<QueryBalanceRe
     request.query(&deps.querier)
 }
 
-fn query_participants(deps: Deps) -> StdResult<ParticipantsResponse> {
+fn query_participants_primary_market(deps: Deps) -> StdResult<ParticipantsResponse> {
     let mut participants = vec![];
     let total_tickets_sold = TOTAL_TICKETS_SOLD.load(deps.storage)?;
 
     // Iterate through all ticket holders
-    let all_ticket_holders: Vec<(Addr, Uint128)> = TICKET_HOLDERS
+    let all_ticket_holders: Vec<(Addr, Uint128)> = TICKET_HOLDERS_PRIMARY_MARKET
         .range(deps.storage, None, None, Order::Ascending)
         .collect::<StdResult<Vec<_>>>()?;
 
@@ -785,42 +790,60 @@ fn query_draft_tvl(deps: Deps) -> StdResult<DraftTvlResponse> {
 fn query_ticket_holders(deps: Deps) -> StdResult<TicketHoldersResponse> {
     let mut holders = vec![];
     let total_tickets_sold = TOTAL_TICKETS_SOLD.load(deps.storage)?;
+    let ticket_denom = TICKET_DENOM.load(deps.storage)?;
 
-    // Iterate through all ticket holders
-    let all_ticket_holders: Vec<(Addr, Uint128)> = TICKET_HOLDERS
-        .range(deps.storage, None, None, Order::Ascending)
-        .collect::<StdResult<Vec<_>>>()?;
+    let request = QueryDenomOwnersRequest {
+        denom: ticket_denom.clone(),
+        pagination: None,
+    };
+    let request_binary = Binary::from(request.encode_to_vec());
+    let response_binary = deps.querier.query_grpc(
+        "/cosmos.bank.v1beta1.Query/DenomOwners".to_string(),
+        request_binary,
+    )?;
+    let response = QueryDenomOwnersResponse::decode(response_binary.as_slice())
+        .map_err(|e| StdError::generic_err(e.to_string()))?;
 
-    for (addr, tickets) in all_ticket_holders {
+    for owner in response.denom_owners {
+        let tickets = owner
+            .balance
+            .unwrap_or_default()
+            .amount
+            .parse::<Uint128>()
+            .unwrap_or(Uint128::zero())
+            / Uint128::from(10u128).pow(TICKET_PRECISION);
         if !tickets.is_zero() {
             holders.push(ParticipantInfo {
-                address: addr.to_string(),
+                address: owner.address,
                 tickets,
                 win_chance: calculate_win_chance(tickets, total_tickets_sold),
             });
         }
     }
 
+    let total_holders = holders.len() as u64;
     Ok(TicketHoldersResponse {
-        holders: holders.clone(),
-        total_holders: holders.len() as u64,
+        holders,
+        total_holders,
     })
 }
 
 fn query_user_number_of_tickets(deps: Deps, address: String) -> StdResult<UserTicketsResponse> {
     let addr = deps.api.addr_validate(&address)?;
-    let tickets = TICKET_HOLDERS
-        .may_load(deps.storage, &addr)?
-        .unwrap_or(Uint128::zero());
+    // Query actual balance from bank module
+    let balance = query_ticket_balance(deps, address.clone())?;
+    let tickets =
+        Uint128::from_str(&balance.balance)? / Uint128::from(10u128).pow(TICKET_PRECISION);
 
     Ok(UserTicketsResponse { address, tickets })
 }
 
 fn query_user_win_chance(deps: Deps, address: String) -> StdResult<UserWinChanceResponse> {
     let addr = deps.api.addr_validate(&address)?;
-    let tickets = TICKET_HOLDERS
-        .may_load(deps.storage, &addr)?
-        .unwrap_or(Uint128::zero());
+    // Query actual balance from bank module
+    let balance = query_ticket_balance(deps, address.clone())?;
+    let tickets =
+        Uint128::from_str(&balance.balance)? / Uint128::from(10u128).pow(TICKET_PRECISION);
 
     let total_tickets_sold = TOTAL_TICKETS_SOLD.load(deps.storage)?;
 

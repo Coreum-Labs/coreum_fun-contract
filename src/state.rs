@@ -30,7 +30,7 @@ pub struct Config {
 
 // Key storage items
 pub const CONFIG: Item<Config> = Item::new("config");
-pub const TICKET_HOLDERS: Map<&Addr, Uint128> = Map::new("ticket_holders"); // Address -> Number of tickets
+pub const TICKET_HOLDERS_PRIMARY_MARKET: Map<&Addr, Uint128> = Map::new("ticket_holders"); // Address -> Number of tickets
 pub const TOTAL_TICKETS_SOLD: Item<Uint128> = Item::new("total_tickets_sold");
 pub const TOTAL_TICKETS_BURNED: Item<Uint128> = Item::new("total_tickets_burned");
 pub const CLAIMS: Map<&Addr, Uint128> = Map::new("claims"); // Address -> Amount claimed
@@ -58,12 +58,12 @@ pub fn increment_tickets_burned(storage: &mut dyn Storage, amount: Uint128) -> S
     TOTAL_TICKETS_BURNED.update(storage, |current| -> StdResult<_> { Ok(current + amount) })
 }
 
-pub fn update_ticket_holder(
+pub fn update_ticket_holder_primary_market(
     storage: &mut dyn Storage,
     addr: &Addr,
     amount: Uint128,
 ) -> StdResult<Uint128> {
-    TICKET_HOLDERS.update(storage, addr, |current| -> StdResult<_> {
+    TICKET_HOLDERS_PRIMARY_MARKET.update(storage, addr, |current| -> StdResult<_> {
         match current {
             Some(value) => Ok(value + amount),
             None => Ok(amount),
@@ -71,12 +71,12 @@ pub fn update_ticket_holder(
     })
 }
 
-pub fn decrease_ticket_holder(
+pub fn decrease_ticket_holder_primary_market(
     storage: &mut dyn Storage,
     addr: &Addr,
     amount: Uint128,
 ) -> StdResult<Uint128> {
-    TICKET_HOLDERS.update(storage, addr, |current| -> StdResult<_> {
+    TICKET_HOLDERS_PRIMARY_MARKET.update(storage, addr, |current| -> StdResult<_> {
         match current {
             Some(value) => {
                 if value < amount {
