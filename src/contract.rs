@@ -302,6 +302,11 @@ pub fn execute_select_winner_and_undelegate(
 
     let total_rewards = accumulated_rewards.accumulated_rewards + config.bonus_rewards;
 
+    // Ensure we have rewards to send
+    if total_rewards.is_zero() {
+        return Err(ContractError::NoRewardsToSend {});
+    }
+
     // Step 6: Set the winner address in the contract state
     CONFIG.update(deps.storage, |mut config| -> StdResult<_> {
         config.winner = Some(winner_addr.clone());
@@ -387,6 +392,11 @@ pub fn execute_send_funds_to_winner(
 
     // Step 5: Calculate total rewards
     let total_rewards = config.accumulated_rewards + config.bonus_rewards;
+
+    // Ensure we have rewards to send
+    if total_rewards.is_zero() {
+        return Err(ContractError::NoRewardsToSend {});
+    }
 
     // Step 6: Send the rewards to the winner
     let send_rewards_msg = CosmosMsg::Any(
