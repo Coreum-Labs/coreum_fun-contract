@@ -281,9 +281,12 @@ pub fn execute_select_winner_and_undelegate(
     }
 
     // Step 4: Verify the winner has tickets
-    //TODO: User could have bought tickets on the secondary market: use other function, get holders
-    let winner_tickets = TICKET_HOLDERS_PRIMARY_MARKET
-        .may_load(deps.storage, &winner_addr)?
+    let holders = query_ticket_holders(deps.as_ref())?;
+    let winner_tickets = holders
+        .holders
+        .iter()
+        .find(|h| h.address == winner_address)
+        .map(|h| h.tickets)
         .unwrap_or(Uint128::zero());
 
     if winner_tickets.is_zero() {
