@@ -662,10 +662,16 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
         QueryMsg::GetTotalTicketsBurned {} => to_json_binary(&query_total_tickets_burned(deps)?),
         QueryMsg::GetClaims { address } => to_json_binary(&query_claims(deps, address)?),
         QueryMsg::GetDelegatedAmount {} => to_json_binary(&query_delegated_amount(deps, &_env)?),
+        QueryMsg::GetContractConfig {} => to_json_binary(&query_contract_config(deps)?),
     }
 }
 
 // Query functions
+
+fn query_contract_config(deps: Deps) -> StdResult<Config> {
+    let config = CONFIG.load(deps.storage)?;
+    Ok(config)
+}
 
 fn query_accumulated_rewards_at_undelegation(
     deps: Deps,

@@ -1,4 +1,4 @@
-use crate::state::DrawState;
+use crate::state::{Config, DrawState};
 use coreum_wasm_sdk::types::cosmos::base::v1beta1::Coin;
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{Addr, Uint128};
@@ -49,6 +49,10 @@ pub enum ExecuteMsg {
 #[cw_serde]
 #[derive(QueryResponses)]
 pub enum QueryMsg {
+    /// Get the contract config
+    #[returns(Config)]
+    GetContractConfig {},
+
     /// Get the balance of a specific address
     #[returns(BalanceResponse)]
     Balance { account: String },
