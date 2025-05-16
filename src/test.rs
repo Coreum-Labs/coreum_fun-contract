@@ -1361,4 +1361,239 @@ mod tests {
             .unwrap();
         assert_eq!(user1_holder.tickets, tickets_user1 - transfer_amount);
     }
+
+    #[test]
+    fn test_multiple_buyers_and_burn() {
+        let app = CoreumTestApp::new();
+        let admin = app
+            .init_account(&[coin(100_000_000_000_000_000_000u128, FEE_DENOM)])
+            .unwrap();
+        let validator_creator = app
+            .init_account(&[coin(100_000_000_000_000_000_000u128, FEE_DENOM)])
+            .unwrap();
+
+        let wasm = Wasm::new(&app);
+        let validator_address = create_validator(&app, &validator_creator);
+
+        // Instantiate contract with 500 tickets
+        let contract_address = store_and_instantiate(
+            &wasm,
+            &admin,
+            validator_address,
+            Uint128::from(500u128),      // total_tickets
+            Uint128::from(TICKET_PRICE), // ticket_price
+            Uint128::from(1u128),        // max_tickets_per_user (1 ticket per user)
+        );
+
+        // Create 500 users and buy one ticket each
+        let mut users = Vec::new();
+        for i in 0..500 {
+            let user = app
+                .init_account(&[coin(100_000_000_000_000_000_000u128, FEE_DENOM)])
+                .unwrap();
+            users.push(user);
+
+            // Buy one ticket
+            wasm.execute(
+                &contract_address,
+                &ExecuteMsg::BuyTicket {
+                    number_of_tickets: Uint128::from(1u128),
+                },
+                &[coin(TICKET_PRICE, FEE_DENOM)],
+                &users[i],
+            )
+            .unwrap();
+        }
+
+        // Verify total tickets sold
+        let tickets_sold: crate::msg::TicketsSoldResponse = wasm
+            .query(&contract_address, &QueryMsg::GetNumberOfTicketsSold {})
+            .unwrap();
+        assert_eq!(tickets_sold.tickets_sold, Uint128::from(500u128));
+
+        // Query ticket holders
+        let holders: crate::msg::TicketHoldersResponse = wasm
+            .query(&contract_address, &QueryMsg::GetTicketHolders {})
+            .unwrap();
+        assert_eq!(holders.total_holders, 500);
+        assert_eq!(holders.holders.len(), 500);
+
+        // Send 1 COREUM to contract for gas fees
+        let bank = Bank::new(&app);
+        bank.send(
+            MsgSend {
+                from_address: admin.address(),
+                to_address: contract_address.clone(),
+                amount: vec![BaseCoin {
+                    amount: "1000000".to_string(), // 1 COREUM (1_000_000 ucore)
+                    denom: FEE_DENOM.to_string(),
+                }],
+            },
+            &admin,
+        )
+        .unwrap();
+
+        // Select winner and start undelegation
+        wasm.execute(
+            &contract_address,
+            &ExecuteMsg::SelectWinnerAndUndelegate {
+                winner_address: users[0].address(),
+            },
+            &[],
+            &admin,
+        )
+        .unwrap();
+
+        // Wait for undelegation period
+        app.increase_time(SECONDS_PER_DAY * UNDELEGATION_DAYS + 10000000);
+
+        // Check contract state and balances before sending funds
+        let state: crate::msg::CurrentStateResponse = wasm
+            .query(&contract_address, &QueryMsg::GetCurrentState {})
+            .unwrap();
+        println!("Contract state before sending funds: {:?}", state.state);
+
+        let delegated: crate::msg::DelegatedAmountResponse = wasm
+            .query(&contract_address, &QueryMsg::GetDelegatedAmount {})
+            .unwrap();
+        println!("Delegated amount before sending funds: {:?}", delegated);
+
+        let bank = Bank::new(&app);
+        let contract_balance = bank
+            .query_balance(&QueryBalanceRequest {
+                address: contract_address.clone(),
+                denom: FEE_DENOM.to_string(),
+            })
+            .unwrap();
+        println!(
+            "Contract balance before sending funds: {:?}",
+            contract_balance
+        );
+
+        // Send funds to winner
+        wasm.execute(
+            &contract_address,
+            &ExecuteMsg::SendFundsToWinner {},
+            &[],
+            &admin,
+        )
+        .unwrap();
+
+        // Get ticket denom
+        let ticket_denom = format!("u{}-{}", TICKET_TOKEN.to_lowercase(), contract_address);
+
+        // Each user burns their ticket
+        for user in &users {
+            let tickets_to_burn = CosmoCoin {
+                amount: Uint128::from(10u128).pow(TICKET_PRECISION),
+                denom: ticket_denom.clone(),
+            };
+
+            println!("Burning ticket for user: {}", user.address());
+            wasm.execute(
+                &contract_address,
+                &ExecuteMsg::BurnTickets {
+                    number_of_tickets: Uint128::from(1u128),
+                },
+                &[tickets_to_burn],
+                user,
+            )
+            .unwrap();
+
+            // Check holders after each burn
+            let holders: crate::msg::TicketHoldersResponse = wasm
+                .query(&contract_address, &QueryMsg::GetTicketHolders {})
+                .unwrap();
+            println!("Holders remaining: {}", holders.total_holders);
+        }
+
+        // Verify all tickets are burned
+        let total_burned: crate::msg::TotalBurnedResponse = wasm
+            .query(&contract_address, &QueryMsg::GetTotalTicketsBurned {})
+            .unwrap();
+        println!("Total tickets burned: {}", total_burned.total_burned);
+        assert_eq!(total_burned.total_burned, Uint128::from(500u128));
+
+        // Verify no tickets left
+        let holders: crate::msg::TicketHoldersResponse = wasm
+            .query(&contract_address, &QueryMsg::GetTicketHolders {})
+            .unwrap();
+        println!("Final holders state:");
+        println!("Total holders: {}", holders.total_holders);
+        println!("Number of holders in vector: {}", holders.holders.len());
+        for holder in &holders.holders {
+            println!(
+                "Holder: {}, Tickets: {}, Win Chance: {}",
+                holder.address, holder.tickets, holder.win_chance
+            );
+        }
+        assert_eq!(holders.total_holders, 0);
+        assert_eq!(holders.holders.len(), 0);
+
+        // Check that users received their refunds
+        for user in &users {
+            let balance = bank
+                .query_balance(&QueryBalanceRequest {
+                    address: user.address(),
+                    denom: FEE_DENOM.to_string(),
+                })
+                .unwrap()
+                .balance
+                .unwrap()
+                .amount
+                .parse::<u128>()
+                .unwrap();
+
+            // Each user should have their ticket price back (minus gas fees)
+            // Initial balance was 100_000_000_000_000_000_000, they spent TICKET_PRICE
+            let expected_balance = 100_000_000_000_000_000_000u128 - TICKET_PRICE;
+            assert!(
+                balance >= expected_balance * 99 / 100, // Allow for 1% gas fee
+                "User {} balance {} is less than expected {}",
+                user.address(),
+                balance,
+                expected_balance
+            );
+        }
+
+        // Check winner's rewards
+        let winner_balance = bank
+            .query_balance(&QueryBalanceRequest {
+                address: users[0].address(),
+                denom: FEE_DENOM.to_string(),
+            })
+            .unwrap()
+            .balance
+            .unwrap()
+            .amount
+            .parse::<u128>()
+            .unwrap();
+
+        // Winner should have:
+        // 1. Initial balance (100_000_000_000_000_000_000)
+        // 2. Minus ticket price (TICKET_PRICE)
+        // 3. Plus accumulated rewards
+        // 4. Plus bonus rewards
+        let accumulated_rewards: crate::msg::AccumulatedRewardsAtUndelegationResponse = wasm
+            .query(
+                &contract_address,
+                &QueryMsg::GetAccumulatedRewardsAtUndelegation {},
+            )
+            .unwrap();
+
+        let bonus_rewards: crate::msg::BonusRewardsResponse = wasm
+            .query(&contract_address, &QueryMsg::GetBonusRewards {})
+            .unwrap();
+
+        let expected_winner_balance = 100_000_000_000_000_000_000u128
+            + accumulated_rewards.accumulated_rewards.u128()
+            + bonus_rewards.bonus_rewards.u128();
+
+        assert!(
+            winner_balance >= expected_winner_balance * 99 / 100, // Allow for 1% gas fee
+            "Winner balance {} is less than expected {}",
+            winner_balance,
+            expected_winner_balance
+        );
+    }
 }
