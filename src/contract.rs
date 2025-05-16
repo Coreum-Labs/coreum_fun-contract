@@ -970,14 +970,14 @@ fn query_delegated_amount(deps: Deps, env: &Env) -> StdResult<DelegatedAmountRes
     Ok(DelegatedAmountResponse { amount })
 }
 
-#[cfg_attr(not(feature = "library"), entry_point)]
-#[entry_point]
-pub fn migrate(deps: DepsMut, _env: Env, _msg: MigrateMsg) -> Result<Response, ContractError> {
-    let ver = cw2::get_contract_version(deps.storage)?;
-    if ver.contract != CONTRACT_NAME {
-        return Err(StdError::generic_err("Can only upgrade from same contract type").into());
-    }
-    // TODO Add migration logic, and version validation
-    set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
-    Ok(Response::default())
-}
+// #[cfg_attr(not(feature = "library"), entry_point)]
+// #[entry_point]
+// pub fn migrate(deps: DepsMut, _env: Env, _msg: MigrateMsg) -> Result<Response, ContractError> {
+//     let ver = cw2::get_contract_version(deps.storage)?;
+//     if ver.contract != CONTRACT_NAME {
+//         return Err(StdError::generic_err("Can only upgrade from same contract type").into());
+//     }
+//     // TODO Add migration logic, and version validation
+//     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
+//     Ok(Response::default())
+// }

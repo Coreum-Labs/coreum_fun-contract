@@ -4,7 +4,9 @@ mod tests {
         msg::{ExecuteMsg, InstantiateMsg, QueryMsg},
         state::DrawState,
     };
-    use coreum_test_tube::{Account, Bank, CoreumTestApp, Module, SigningAccount, Staking, Wasm};
+    use coreum_test_tube::{
+        Account, AssetFT, Bank, CoreumTestApp, Module, SigningAccount, Staking, Wasm,
+    };
     use coreum_wasm_sdk::types::cosmos::bank::v1beta1::{
         MsgSend, QueryBalanceRequest, QueryBalanceResponse,
     };
@@ -1671,5 +1673,102 @@ mod tests {
             winner_balance,
             expected_winner_balance
         );
+    }
+
+    // #[test]
+    // fn test_contract_migration() {
+    //     let app = CoreumTestApp::new();
+    //     let admin = app
+    //         .init_account(&[coin(100_000_000_000_000_000_000u128, FEE_DENOM)])
+    //         .unwrap();
+    //     let validator_creator = app
+    //         .init_account(&[coin(100_000_000_000_000_000_000u128, FEE_DENOM)])
+    //         .unwrap();
+
+    //     let wasm = Wasm::new(&app);
+    //     let validator_address = create_validator(&app, &validator_creator);
+
+    //     // Instantiate first version of contract
+    //     let contract_address = store_and_instantiate(
+    //         &wasm,
+    //         &admin,
+    //         validator_address.clone(),
+    //         Uint128::from(1000u128),
+    //         Uint128::from(TICKET_PRICE),
+    //         Uint128::from(10u128),
+    //     );
+
+    //     // Migrate contract
+    //     wasm.migrate(
+    //         &contract_address,
+    //         &crate::msg::MigrateMsg {
+    //             new_validator_address: None,
+    //         },
+    //         &admin,
+    //     )
+    //     .unwrap();
+
+    //     // Verify contract still works after migration
+    //     let state: crate::msg::CurrentStateResponse = wasm
+    //         .query(&contract_address, &QueryMsg::GetCurrentState {})
+    //         .unwrap();
+    //     assert_eq!(state.state, DrawState::TicketSalesOpen);
+    // }
+
+    #[test]
+    fn test_token_admin_transfer() {
+        let app = CoreumTestApp::new();
+        let admin = app
+            .init_account(&[coin(100_000_000_000_000_000_000u128, FEE_DENOM)])
+            .unwrap();
+        let new_admin = app
+            .init_account(&[coin(100_000_000_000_000_000_000u128, FEE_DENOM)])
+            .unwrap();
+        let validator_creator = app
+            .init_account(&[coin(100_000_000_000_000_000_000u128, FEE_DENOM)])
+            .unwrap();
+
+        let wasm = Wasm::new(&app);
+        let validator_address = create_validator(&app, &validator_creator);
+
+        // Instantiate contract
+        let contract_address = store_and_instantiate(
+            &wasm,
+            &admin,
+            validator_address,
+            Uint128::from(1000u128),
+            Uint128::from(TICKET_PRICE),
+            Uint128::from(10u128),
+        );
+
+        // Transfer token admin
+        wasm.execute(
+            &contract_address,
+            &ExecuteMsg::TransferTokenAdmin {
+                new_admin: new_admin.address(),
+            },
+            &[],
+            &admin,
+        )
+        .unwrap();
+
+        // Verify new admin can mint tokens
+        let mint_amount = Uint128::from(1000u128);
+        let mint_msg = MsgMint {
+            sender: new_admin.address(),
+            coin: Some(coreum_wasm_sdk::types::cosmos::base::v1beta1::Coin {
+                denom: format!("u{}-{}", TICKET_TOKEN.to_lowercase(), contract_address),
+                amount: mint_amount.to_string(),
+            }),
+            recipient: new_admin.address(),
+        };
+
+        // Use Coreum asset module to mint
+        let asset = AssetFT::new(&app);
+        asset.mint(mint_msg.clone(), &new_admin).unwrap();
+
+        // Verify old admin cannot mint tokens
+        let result = asset.mint(mint_msg, &admin);
+        assert!(result.is_err());
     }
 }
