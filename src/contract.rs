@@ -12,7 +12,7 @@ use crate::error::ContractError;
 use crate::msg::{
     AccumulatedRewardsAtUndelegationResponse, AccumulatedRewardsResponse, BonusRewardsResponse,
     ClaimInfo, ClaimsResponse, CurrentStateResponse, DelegatedAmountResponse, DraftTvlResponse,
-    ExecuteMsg, InstantiateMsg, ParticipantInfo, ParticipantsResponse, QueryMsg,
+    ExecuteMsg, InstantiateMsg, MigrateMsg, ParticipantInfo, ParticipantsResponse, QueryMsg,
     TicketHoldersResponse, TicketsSoldResponse, TotalBurnedResponse, UserTicketsResponse,
     UserWinChanceResponse, WinnerResponse,
 };
@@ -35,7 +35,6 @@ use cosmrs::proto::cosmos::bank::v1beta1::QueryDenomOwnersRequest;
 use cosmrs::proto::cosmos::bank::v1beta1::QueryDenomOwnersResponse;
 use cosmrs::proto::cosmos::base::query::v1beta1::PageRequest;
 
-use crate::msg::MigrateMsg;
 // Version info for migration
 const CONTRACT_NAME: &str = "coreum-fun";
 const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -975,7 +974,7 @@ pub fn migrate(deps: DepsMut, _env: Env, msg: MigrateMsg) -> Result<Response, Co
     let ver = cw2::get_contract_version(deps.storage)?;
     //set new validator address
     if let Some(new_validator_address) = msg.new_validator_address {
-        let new_validator = deps.api.addr_validate(&new_validator_address)?;
+        let new_validator = new_validator_address;
         CONFIG.update(deps.storage, |mut config| -> StdResult<_> {
             config.validator_address = new_validator.to_string();
             Ok(config)
