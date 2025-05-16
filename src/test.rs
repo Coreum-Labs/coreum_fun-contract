@@ -1208,4 +1208,157 @@ mod tests {
             .unwrap();
         assert_eq!(user_tickets.tickets, max_tickets);
     }
+
+    #[test]
+    fn test_query_ticket_holders() {
+        let app = CoreumTestApp::new();
+        let admin = app
+            .init_account(&[coin(100_000_000_000_000_000_000u128, FEE_DENOM)])
+            .unwrap();
+        let user1 = app
+            .init_account(&[coin(100_000_000_000_000_000_000u128, FEE_DENOM)])
+            .unwrap();
+        let user2 = app
+            .init_account(&[coin(100_000_000_000_000_000_000u128, FEE_DENOM)])
+            .unwrap();
+        let validator_creator = app
+            .init_account(&[coin(100_000_000_000_000_000_000u128, FEE_DENOM)])
+            .unwrap();
+
+        let wasm = Wasm::new(&app);
+        let validator_address = create_validator(&app, &validator_creator);
+
+        let contract_address = store_and_instantiate(
+            &wasm,
+            &admin,
+            validator_address,
+            Uint128::from(1000u128),
+            Uint128::from(TICKET_PRICE),
+            Uint128::from(100u128),
+        );
+
+        // Buy tickets for user1
+        let tickets_user1 = Uint128::from(50u128);
+        wasm.execute(
+            &contract_address,
+            &ExecuteMsg::BuyTicket {
+                number_of_tickets: tickets_user1,
+            },
+            &[coin(tickets_user1.u128() * TICKET_PRICE, FEE_DENOM)],
+            &user1,
+        )
+        .unwrap();
+
+        // Buy tickets for user2
+        let tickets_user2 = Uint128::from(30u128);
+        wasm.execute(
+            &contract_address,
+            &ExecuteMsg::BuyTicket {
+                number_of_tickets: tickets_user2,
+            },
+            &[coin(tickets_user2.u128() * TICKET_PRICE, FEE_DENOM)],
+            &user2,
+        )
+        .unwrap();
+
+        // Query ticket holders
+        let holders: crate::msg::TicketHoldersResponse = wasm
+            .query(&contract_address, &QueryMsg::GetTicketHolders {})
+            .unwrap();
+
+        println!("Total holders: {}", holders.total_holders);
+        for holder in &holders.holders {
+            println!(
+                "Holder: {}, Tickets: {}, Win Chance: {}",
+                holder.address, holder.tickets, holder.win_chance
+            );
+        }
+
+        // Verify results
+        assert_eq!(holders.total_holders, 2);
+        assert_eq!(holders.holders.len(), 2);
+
+        // Verify user1's tickets
+        let user1_holder = holders
+            .holders
+            .iter()
+            .find(|h| h.address == user1.address())
+            .unwrap();
+        assert_eq!(user1_holder.tickets, tickets_user1);
+
+        // Verify user2's tickets
+        let user2_holder = holders
+            .holders
+            .iter()
+            .find(|h| h.address == user2.address())
+            .unwrap();
+        assert_eq!(user2_holder.tickets, tickets_user2);
+
+        // Add test for ticket transfer
+        let user3 = app
+            .init_account(&[coin(100_000_000_000_000_000_000u128, FEE_DENOM)])
+            .unwrap();
+
+        // Transfer 10 tickets from user1 to user3
+        let transfer_amount = Uint128::from(10u128);
+        let ticket_denom = format!("u{}-{}", TICKET_TOKEN.to_lowercase(), contract_address);
+
+        let bank = Bank::new(&app);
+        bank.send(
+            MsgSend {
+                from_address: user1.address(),
+                to_address: user3.address(),
+                amount: vec![BaseCoin {
+                    amount: (transfer_amount * Uint128::from(10u128).pow(TICKET_PRECISION))
+                        .to_string(),
+                    denom: ticket_denom,
+                }],
+            },
+            &user1,
+        )
+        .unwrap();
+
+        // Query ticket holders again
+        let holders: crate::msg::TicketHoldersResponse = wasm
+            .query(&contract_address, &QueryMsg::GetTicketHolders {})
+            .unwrap();
+
+        println!("\nAfter transfer:");
+        println!("Total holders: {}", holders.total_holders);
+        println!("Number of holders in vector: {}", holders.holders.len());
+        for holder in &holders.holders {
+            println!(
+                "Holder: {}, Tickets: {}, Win Chance: {}",
+                holder.address, holder.tickets, holder.win_chance
+            );
+        }
+        println!(
+            "All holder addresses: {:?}",
+            holders
+                .holders
+                .iter()
+                .map(|h| &h.address)
+                .collect::<Vec<_>>()
+        );
+
+        // Verify results after transfer
+        assert_eq!(holders.total_holders, 3);
+        assert_eq!(holders.holders.len(), 3);
+
+        // Verify user3 received the tickets
+        let user3_holder = holders
+            .holders
+            .iter()
+            .find(|h| h.address == user3.address())
+            .unwrap();
+        assert_eq!(user3_holder.tickets, transfer_amount);
+
+        // Verify user1's remaining tickets
+        let user1_holder = holders
+            .holders
+            .iter()
+            .find(|h| h.address == user1.address())
+            .unwrap();
+        assert_eq!(user1_holder.tickets, tickets_user1 - transfer_amount);
+    }
 }
