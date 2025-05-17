@@ -1870,4 +1870,130 @@ mod tests {
         )
         .unwrap();
     }
+
+    #[test]
+    fn test_update_ownership() {
+        let app = CoreumTestApp::new();
+        let admin = app
+            .init_account(&[coin(100_000_000_000_000_000_000u128, FEE_DENOM)])
+            .unwrap();
+        let new_owner = app
+            .init_account(&[coin(100_000_000_000_000_000_000u128, FEE_DENOM)])
+            .unwrap();
+        let non_owner = app
+            .init_account(&[coin(100_000_000_000_000_000_000u128, FEE_DENOM)])
+            .unwrap();
+        let validator_creator = app
+            .init_account(&[coin(100_000_000_000_000_000_000u128, FEE_DENOM)])
+            .unwrap();
+
+        let wasm = Wasm::new(&app);
+        let validator_address = create_validator(&app, &validator_creator);
+
+        // Instantiate contract
+        let contract_address = store_and_instantiate(
+            &wasm,
+            &admin,
+            validator_address,
+            Uint128::from(1000u128),
+            Uint128::from(TICKET_PRICE),
+            Uint128::from(10u128),
+        );
+
+        // Test that non-owner cannot transfer ownership
+        let result = wasm.execute(
+            &contract_address,
+            &ExecuteMsg::UpdateOwnership(cw_ownable::Action::TransferOwnership {
+                new_owner: new_owner.address(),
+                expiry: None,
+            }),
+            &[],
+            &non_owner,
+        );
+        assert!(
+            result.unwrap_err().to_string().contains(
+                ContractError::Ownership(cw_ownable::OwnershipError::NotOwner)
+                    .to_string()
+                    .as_str()
+            ),
+            "Expected NotOwner error for update_ownership"
+        );
+
+        // Test that owner can transfer ownership
+        wasm.execute(
+            &contract_address,
+            &ExecuteMsg::UpdateOwnership(cw_ownable::Action::TransferOwnership {
+                new_owner: new_owner.address(),
+                expiry: None,
+            }),
+            &[],
+            &admin,
+        )
+        .unwrap();
+
+        // New owner needs to accept the transfer
+        wasm.execute(
+            &contract_address,
+            &ExecuteMsg::UpdateOwnership(cw_ownable::Action::AcceptOwnership),
+            &[],
+            &new_owner,
+        )
+        .unwrap();
+
+        // Verify new owner can execute owner-only functions
+        wasm.execute(
+            &contract_address,
+            &ExecuteMsg::UpdateDrawState {
+                new_state: DrawState::DrawFinished,
+            },
+            &[],
+            &new_owner,
+        )
+        .unwrap();
+
+        // Verify old owner cannot execute owner-only functions
+        let result = wasm.execute(
+            &contract_address,
+            &ExecuteMsg::UpdateDrawState {
+                new_state: DrawState::TicketSalesOpen,
+            },
+            &[],
+            &admin,
+        );
+        assert!(
+            result.unwrap_err().to_string().contains(
+                ContractError::Ownership(cw_ownable::OwnershipError::NotOwner)
+                    .to_string()
+                    .as_str()
+            ),
+            "Expected NotOwner error for old owner"
+        );
+
+        // Test that new owner can renounce ownership
+        wasm.execute(
+            &contract_address,
+            &ExecuteMsg::UpdateOwnership(cw_ownable::Action::RenounceOwnership),
+            &[],
+            &new_owner,
+        )
+        .unwrap();
+
+        // Verify no one can execute owner-only functions after renouncing
+        let result = wasm.execute(
+            &contract_address,
+            &ExecuteMsg::UpdateDrawState {
+                new_state: DrawState::TicketSalesOpen,
+            },
+            &[],
+            &new_owner,
+        );
+        assert!(
+            result.unwrap_err().to_string().contains(
+                ContractError::Ownership(cw_ownable::OwnershipError::NoOwner)
+                    .to_string()
+                    .as_str()
+            ),
+            "Expected NoOwner error after renouncing ownership"
+        );
+    }
 }
