@@ -92,7 +92,7 @@ pub fn instantiate(
         issuer: env.contract.address.to_string(),
         symbol: msg.ticket_token_symbol.clone(),
         subunit: format!("u{}", msg.ticket_token_symbol.to_lowercase()),
-        precision: TICKET_PRECISION, // TODO: check if we go with 0 or 6
+        precision: TICKET_PRECISION,
         initial_amount: "0".to_string(),
         description: "Draft tickets for Coreum No-Loss Draft on coreum.fun".to_string(),
         //Minting & Burning is enabled
@@ -171,6 +171,7 @@ fn update_ownership(
     action: Action,
 ) -> Result<Response, ContractError> {
     let ownership = cw_ownable::update_ownership(deps, &env.block, &info.sender, action)?;
+
     Ok(Response::new()
         .add_attribute("sender", info.sender)
         .add_attributes(ownership.into_attributes()))
@@ -881,7 +882,6 @@ fn query_ticket_holders(deps: Deps) -> StdResult<TicketHoldersResponse> {
 }
 
 fn query_user_number_of_tickets(deps: Deps, address: String) -> StdResult<UserTicketsResponse> {
-    let addr = deps.api.addr_validate(&address)?;
     // Query actual balance from bank module
     let balance = query_ticket_balance(deps, address.clone())?;
     let tickets =
@@ -891,7 +891,6 @@ fn query_user_number_of_tickets(deps: Deps, address: String) -> StdResult<UserTi
 }
 
 fn query_user_win_chance(deps: Deps, address: String) -> StdResult<UserWinChanceResponse> {
-    let addr = deps.api.addr_validate(&address)?;
     // Query actual balance from bank module
     let balance = query_ticket_balance(deps, address.clone())?;
     let tickets =
