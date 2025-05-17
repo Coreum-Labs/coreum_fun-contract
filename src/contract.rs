@@ -3,7 +3,7 @@ use cosmwasm_std::{
     DepsMut, Empty, Env, MessageInfo, Order, Response, StakingMsg, StdError, StdResult, Uint128,
 };
 use cw2::set_contract_version;
-use cw_ownable::{assert_owner, get_ownership, get_ownership, initialize_owner, Action};
+use cw_ownable::{assert_owner, get_ownership, initialize_owner, Action};
 use prost::Message;
 use std::str::FromStr;
 
@@ -69,7 +69,6 @@ pub fn instantiate(
 
     // Step 4: Initialize config with default values
     let config = Config {
-        owner: info.sender.clone(),
         ticket_symbol: msg.ticket_token_symbol.clone(),
         core_denom: msg.core_denom.clone(),
         validator_address: msg.validator_address.clone(),

@@ -14,7 +14,6 @@ pub enum DrawState {
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct Config {
-    pub owner: Addr,                              // Contract owner
     pub ticket_symbol: String,                    // Denom of the TICKET token
     pub core_denom: String,                       // Denom of CORE token (ucore)
     pub validator_address: String,                // Coreum Labs validator address

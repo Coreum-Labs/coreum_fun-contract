@@ -1,9 +1,13 @@
 use crate::state::DrawState;
 use cosmwasm_std::{StdError, Uint128};
+use cw_ownable::OwnershipError;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum ContractError {
+    #[error(transparent)]
+    Ownership(#[from] OwnershipError),
+
     #[error("{0}")]
     Std(#[from] StdError),
 
@@ -117,4 +121,7 @@ pub enum ContractError {
 
     #[error("No winner has been selected yet")]
     NoWinnerSelected {},
+
+    #[error("No rewards to send")]
+    NoRewardsToSend {},
 }
