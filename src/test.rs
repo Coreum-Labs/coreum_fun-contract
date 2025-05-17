@@ -1,6 +1,7 @@
 #[cfg(test)]
 mod tests {
     use crate::{
+        error::ContractError,
         msg::{ExecuteMsg, InstantiateMsg, QueryMsg},
         state::DrawState,
     };
@@ -30,6 +31,8 @@ mod tests {
         rand,
         signature::{self, KeyPair},
     };
+
+    use crate::msg::MigrateMsg;
 
     const FEE_DENOM: &str = "ucore";
     const TICKET_TOKEN: &str = "TICKET";
@@ -1675,46 +1678,6 @@ mod tests {
         );
     }
 
-    // #[test]
-    // fn test_contract_migration() {
-    //     let app = CoreumTestApp::new();
-    //     let admin = app
-    //         .init_account(&[coin(100_000_000_000_000_000_000u128, FEE_DENOM)])
-    //         .unwrap();
-    //     let validator_creator = app
-    //         .init_account(&[coin(100_000_000_000_000_000_000u128, FEE_DENOM)])
-    //         .unwrap();
-
-    //     let wasm = Wasm::new(&app);
-    //     let validator_address = create_validator(&app, &validator_creator);
-
-    //     // Instantiate first version of contract
-    //     let contract_address = store_and_instantiate(
-    //         &wasm,
-    //         &admin,
-    //         validator_address.clone(),
-    //         Uint128::from(1000u128),
-    //         Uint128::from(TICKET_PRICE),
-    //         Uint128::from(10u128),
-    //     );
-
-    //     // Migrate contract
-    //     wasm.migrate(
-    //         &contract_address,
-    //         &crate::msg::MigrateMsg {
-    //             new_validator_address: None,
-    //         },
-    //         &admin,
-    //     )
-    //     .unwrap();
-
-    //     // Verify contract still works after migration
-    //     let state: crate::msg::CurrentStateResponse = wasm
-    //         .query(&contract_address, &QueryMsg::GetCurrentState {})
-    //         .unwrap();
-    //     assert_eq!(state.state, DrawState::TicketSalesOpen);
-    // }
-
     #[test]
     fn test_token_admin_transfer() {
         let app = CoreumTestApp::new();
@@ -1770,5 +1733,141 @@ mod tests {
         // Verify old admin cannot mint tokens
         let result = asset.mint(mint_msg, &admin);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_owner_only_functions() {
+        let app = CoreumTestApp::new();
+        let admin = app
+            .init_account(&[coin(100_000_000_000_000_000_000u128, FEE_DENOM)])
+            .unwrap();
+        let non_owner = app
+            .init_account(&[coin(100_000_000_000_000_000_000u128, FEE_DENOM)])
+            .unwrap();
+        let validator_creator = app
+            .init_account(&[coin(100_000_000_000_000_000_000u128, FEE_DENOM)])
+            .unwrap();
+
+        let wasm = Wasm::new(&app);
+        let validator_address = create_validator(&app, &validator_creator);
+
+        // Instantiate contract
+        let contract_address = store_and_instantiate(
+            &wasm,
+            &admin,
+            validator_address,
+            Uint128::from(1000u128),
+            Uint128::from(TICKET_PRICE),
+            Uint128::from(10u128),
+        );
+
+        // Test execute_select_winner_and_undelegate
+        let result = wasm.execute(
+            &contract_address,
+            &ExecuteMsg::SelectWinnerAndUndelegate {
+                winner_address: non_owner.address(),
+            },
+            &[],
+            &non_owner,
+        );
+        assert!(
+            result.unwrap_err().to_string().contains(
+                ContractError::Ownership(cw_ownable::OwnershipError::NotOwner)
+                    .to_string()
+                    .as_str()
+            ),
+            "Expected NotOwner error for select_winner_and_undelegate"
+        );
+
+        // Test execute_update_draw_state
+        let result = wasm.execute(
+            &contract_address,
+            &ExecuteMsg::UpdateDrawState {
+                new_state: DrawState::DrawFinished,
+            },
+            &[],
+            &non_owner,
+        );
+        assert!(
+            result.unwrap_err().to_string().contains(
+                ContractError::Ownership(cw_ownable::OwnershipError::NotOwner)
+                    .to_string()
+                    .as_str()
+            ),
+            "Expected NotOwner error for update_draw_state"
+        );
+
+        // Test execute_send_funds
+        let result = wasm.execute(
+            &contract_address,
+            &ExecuteMsg::SendFundsToWinner {},
+            &[],
+            &non_owner,
+        );
+        assert!(
+            result.unwrap_err().to_string().contains(
+                ContractError::Ownership(cw_ownable::OwnershipError::NotOwner)
+                    .to_string()
+                    .as_str()
+            ),
+            "Expected NotOwner error for send_funds"
+        );
+
+        // Test execute_set_undelegation_timestamp
+        let result = wasm.execute(
+            &contract_address,
+            &ExecuteMsg::SetUndelegationTimestamp {
+                timestamp: app.get_block_timestamp().seconds() + 1000,
+            },
+            &[],
+            &non_owner,
+        );
+        assert!(
+            result.unwrap_err().to_string().contains(
+                ContractError::Ownership(cw_ownable::OwnershipError::NotOwner)
+                    .to_string()
+                    .as_str()
+            ),
+            "Expected NotOwner error for set_undelegation_timestamp"
+        );
+
+        // Test transfer_token_admin
+        let result = wasm.execute(
+            &contract_address,
+            &ExecuteMsg::TransferTokenAdmin {
+                new_admin: non_owner.address(),
+            },
+            &[],
+            &non_owner,
+        );
+        assert!(
+            result.unwrap_err().to_string().contains(
+                ContractError::Ownership(cw_ownable::OwnershipError::NotOwner)
+                    .to_string()
+                    .as_str()
+            ),
+            "Expected NotOwner error for transfer_token_admin"
+        );
+
+        // Verify that owner can still execute these functions
+        wasm.execute(
+            &contract_address,
+            &ExecuteMsg::UpdateDrawState {
+                new_state: DrawState::DrawFinished,
+            },
+            &[],
+            &admin,
+        )
+        .unwrap();
+
+        wasm.execute(
+            &contract_address,
+            &ExecuteMsg::TransferTokenAdmin {
+                new_admin: non_owner.address(),
+            },
+            &[],
+            &admin,
+        )
+        .unwrap();
     }
 }
