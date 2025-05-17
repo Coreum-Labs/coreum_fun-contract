@@ -3,6 +3,9 @@ use cosmwasm_std::{
     DepsMut, Empty, Env, MessageInfo, Order, Response, StakingMsg, StdError, StdResult, Uint128,
 };
 use cw2::set_contract_version;
+use cw_ownable::{
+    assert_owner, get_ownership, initialize_owner, is_owner, update_ownership, Action,
+};
 use prost::Message;
 use std::str::FromStr;
 
@@ -49,6 +52,8 @@ pub fn instantiate(
     info: MessageInfo,
     msg: InstantiateMsg,
 ) -> Result<Response<Empty>, ContractError> {
+    //Step 0: Initialize contract owner
+    initialize_owner(deps.storage, deps.api, Some(info.sender.as_ref()))?;
     // Step 1: Set contract version for migrations
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
 
@@ -273,9 +278,7 @@ pub fn execute_select_winner_and_undelegate(
 
     // Step 2: Verify the caller is the owner
     let config = CONFIG.load(deps.storage)?;
-    if info.sender != config.owner {
-        return Err(ContractError::Unauthorized {});
-    }
+    assert_owner(deps.storage, &info.sender)?;
 
     // Step 3: Verify the draw is in the correct state
     if config.draw_state != DrawState::TicketsSoldOutAccumulationInProgress {
@@ -369,9 +372,8 @@ pub fn execute_send_funds_to_winner(
 ) -> Result<Response, ContractError> {
     // Step 1: Verify the caller is the owner
     let config = CONFIG.load(deps.storage)?;
-    if info.sender != config.owner {
-        return Err(ContractError::Unauthorized {});
-    }
+
+    assert_owner(deps.storage, &info.sender)?;
 
     // Step 2: Verify the draw is in the correct state
     if config.draw_state != DrawState::WinnerSelectedUndelegationInProcess {
@@ -570,11 +572,8 @@ pub fn execute_update_draw_state(
     new_state: DrawState,
 ) -> Result<Response, ContractError> {
     // Verify the caller is the owner
-    let config = CONFIG.load(deps.storage)?;
-    if info.sender != config.owner {
-        return Err(ContractError::Unauthorized {});
-    }
 
+    assert_owner(deps.storage, &info.sender)?;
     // Update the state
     CONFIG.update(deps.storage, |mut config| -> StdResult<_> {
         config.draw_state = new_state.clone();
@@ -597,9 +596,7 @@ pub fn execute_send_funds(
 ) -> Result<Response, ContractError> {
     // Verify the caller is the owner
     let config = CONFIG.load(deps.storage)?;
-    if info.sender != config.owner {
-        return Err(ContractError::Unauthorized {});
-    }
+    assert_owner(deps.storage, &info.sender)?;
 
     // Create the send message
     let recipient_str = recipient.clone();
@@ -630,9 +627,7 @@ pub fn execute_set_undelegation_timestamp(
 ) -> Result<Response, ContractError> {
     // Verify the caller is the owner
     let config = CONFIG.load(deps.storage)?;
-    if info.sender != config.owner {
-        return Err(ContractError::Unauthorized {});
-    }
+    assert_owner(deps.storage, &info.sender)?;
 
     // Verify the draw is in the correct state
     if config.draw_state != DrawState::WinnerSelectedUndelegationInProcess {
@@ -663,10 +658,7 @@ pub fn transfer_token_admin(
 ) -> Result<Response, ContractError> {
     let denom = TICKET_DENOM.load(deps.storage)?;
 
-    let config = CONFIG.load(deps.storage)?;
-    if _info.sender != config.owner {
-        return Err(ContractError::Unauthorized {});
-    }
+    assert_owner(deps.storage, &_info.sender)?;
 
     let transfer_admin = MsgTransferAdmin {
         sender: env.contract.address.to_string(),
@@ -983,7 +975,7 @@ pub fn migrate(deps: DepsMut, _env: Env, msg: MigrateMsg) -> Result<Response, Co
     if ver.contract != CONTRACT_NAME {
         return Err(StdError::generic_err("Can only upgrade from same contract type").into());
     }
-    // TODO Add migration logic, and version validation
+    // TODO: Change owner!
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
     Ok(Response::default())
 }
