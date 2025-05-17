@@ -3,7 +3,7 @@ use cosmwasm_std::{
     DepsMut, Empty, Env, MessageInfo, Order, Response, StakingMsg, StdError, StdResult, Uint128,
 };
 use cw2::set_contract_version;
-use cw_ownable::{assert_owner, get_ownership, initialize_owner, is_owner, Action};
+use cw_ownable::{assert_owner, get_ownership, get_ownership, initialize_owner, Action};
 use prost::Message;
 use std::str::FromStr;
 
@@ -712,6 +712,7 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
         QueryMsg::GetClaims { address } => to_json_binary(&query_claims(deps, address)?),
         QueryMsg::GetDelegatedAmount {} => to_json_binary(&query_delegated_amount(deps, &_env)?),
         QueryMsg::GetContractConfig {} => to_json_binary(&query_contract_config(deps)?),
+        QueryMsg::Ownership {} => to_json_binary(&get_ownership(deps.storage)?),
     }
 }
 
@@ -977,6 +978,7 @@ fn query_delegated_amount(deps: Deps, env: &Env) -> StdResult<DelegatedAmountRes
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn migrate(deps: DepsMut, _env: Env, msg: MigrateMsg) -> Result<Response, ContractError> {
     let ver = cw2::get_contract_version(deps.storage)?;
+
     //set new validator address
     if let Some(new_validator_address) = msg.new_validator_address {
         let new_validator = new_validator_address;
@@ -989,7 +991,6 @@ pub fn migrate(deps: DepsMut, _env: Env, msg: MigrateMsg) -> Result<Response, Co
     if ver.contract != CONTRACT_NAME {
         return Err(StdError::generic_err("Can only upgrade from same contract type").into());
     }
-    // TODO: Change owner!
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
     Ok(Response::default())
 }

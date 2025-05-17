@@ -1,7 +1,8 @@
 use crate::state::{Config, DrawState};
 use coreum_wasm_sdk::types::cosmos::base::v1beta1::Coin;
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::{Addr, Uint128};
+use cosmwasm_std::Uint128;
+use cw_ownable::{cw_ownable_execute, cw_ownable_query};
 
 #[cw_serde]
 pub struct InstantiateMsg {
@@ -18,7 +19,7 @@ pub struct InstantiateMsg {
     /// Maximum number of tickets per user
     pub max_tickets_per_user: Uint128,
 }
-
+#[cw_ownable_execute]
 #[cw_serde]
 pub enum ExecuteMsg {
     /// Buy one or multiple tickets
@@ -48,7 +49,7 @@ pub enum ExecuteMsg {
     /// Transfer token admin
     TransferTokenAdmin { new_admin: String },
 }
-
+#[cw_ownable_query]
 #[cw_serde]
 #[derive(QueryResponses)]
 pub enum QueryMsg {
