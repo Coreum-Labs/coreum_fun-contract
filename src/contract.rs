@@ -3,9 +3,7 @@ use cosmwasm_std::{
     DepsMut, Empty, Env, MessageInfo, Order, Response, StakingMsg, StdError, StdResult, Uint128,
 };
 use cw2::set_contract_version;
-use cw_ownable::{
-    assert_owner, get_ownership, initialize_owner, is_owner, update_ownership, Action,
-};
+use cw_ownable::{assert_owner, get_ownership, initialize_owner, is_owner, Action};
 use prost::Message;
 use std::str::FromStr;
 
@@ -161,7 +159,22 @@ pub fn execute(
         ExecuteMsg::TransferTokenAdmin { new_admin } => {
             transfer_token_admin(deps, env, info, new_admin)
         }
+        ExecuteMsg::UpdateOwnership(action) => {
+            update_ownership(deps.into_empty(), env, info, action)
+        }
     }
+}
+
+fn update_ownership(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    action: Action,
+) -> Result<Response, ContractError> {
+    let ownership = cw_ownable::update_ownership(deps, &env.block, &info.sender, action)?;
+    Ok(Response::new()
+        .add_attribute("sender", info.sender)
+        .add_attributes(ownership.into_attributes()))
 }
 
 pub fn execute_buy_ticket(
@@ -972,6 +985,7 @@ pub fn migrate(deps: DepsMut, _env: Env, msg: MigrateMsg) -> Result<Response, Co
             Ok(config)
         })?;
     }
+
     if ver.contract != CONTRACT_NAME {
         return Err(StdError::generic_err("Can only upgrade from same contract type").into());
     }
