@@ -8,9 +8,7 @@ mod tests {
     use coreum_test_tube::{
         Account, AssetFT, Bank, CoreumTestApp, Module, SigningAccount, Staking, Wasm,
     };
-    use coreum_wasm_sdk::types::cosmos::bank::v1beta1::{
-        MsgSend, QueryBalanceRequest, QueryBalanceResponse,
-    };
+    use coreum_wasm_sdk::types::cosmos::bank::v1beta1::{MsgSend, QueryBalanceRequest};
     use coreum_wasm_sdk::types::cosmos::staking::v1beta1::{
         CommissionRates, Description, MsgCreateValidator,
     };
@@ -18,7 +16,7 @@ mod tests {
     use bech32::{Bech32, Hrp};
 
     use coreum_wasm_sdk::types::coreum::asset::ft::v1::{
-        MsgIssue, MsgMint, QueryBalanceRequest as FtQueryBalanceRequest,
+        MsgMint, QueryBalanceRequest as FtQueryBalanceRequest,
         QueryBalanceResponse as FtQueryBalanceResponse,
     };
 
@@ -31,8 +29,6 @@ mod tests {
         rand,
         signature::{self, KeyPair},
     };
-
-    use crate::msg::MigrateMsg;
 
     const FEE_DENOM: &str = "ucore";
     const TICKET_TOKEN: &str = "TICKET";
@@ -192,7 +188,7 @@ mod tests {
         let admin = app
             .init_account(&[coin(100_000_000_000, FEE_DENOM)])
             .unwrap();
-        let user = app
+        let user: SigningAccount = app
             .init_account(&[coin(100_000_000_000, FEE_DENOM)])
             .unwrap();
         let validator_creator = app
@@ -218,7 +214,7 @@ mod tests {
 
         // Buy tickets
         let number_of_tickets = Uint128::from(5u128);
-        let payment = number_of_tickets * Uint128::from(TICKET_PRICE);
+        let payment: Uint128 = number_of_tickets * Uint128::from(TICKET_PRICE);
 
         wasm.execute(
             &contract_address,
