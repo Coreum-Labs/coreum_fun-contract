@@ -322,10 +322,10 @@ pub fn execute_select_winner_and_undelegate(
 
     let total_rewards = accumulated_rewards.accumulated_rewards + config.bonus_rewards;
 
-    // Ensure we have rewards to send
-    if total_rewards.is_zero() {
-        return Err(ContractError::NoRewardsToSend {});
-    }
+    // // Ensure we have rewards to send
+    // if total_rewards.is_zero() {
+    //     return Err(ContractError::NoRewardsToSend {});
+    // }
 
     // Step 6: Set the winner address in the contract state
     CONFIG.update(deps.storage, |mut config| -> StdResult<_> {
@@ -397,14 +397,14 @@ pub fn execute_send_funds_to_winner(
     }
 
     // Step 3: Check if undelegation period is complete
-    if let Some(undelegation_timestamp) = config.undelegation_done_timestamp {
-        if env.block.time.seconds() < undelegation_timestamp {
-            return Err(ContractError::UndelegationPeriodNotCompleted {
-                current_timestamp: env.block.time.seconds(),
-                undelegation_timestamp,
-            });
-        }
-    }
+    // if let Some(undelegation_timestamp) = config.undelegation_done_timestamp {
+    //     if env.block.time.seconds() < undelegation_timestamp {
+    //         return Err(ContractError::UndelegationPeriodNotCompleted {
+    //             current_timestamp: env.block.time.seconds(),
+    //             undelegation_timestamp,
+    //         });
+    //     }
+    // }
 
     // Step 4: Get winner address
     let winner_addr = config.winner.ok_or(ContractError::NoWinnerSelected {})?;
@@ -513,7 +513,7 @@ pub fn execute_burn_tickets(
     });
 
     // Step 6: Update internal state - user tickets and total burned (not ideal in terms of semantics cause tikets can switch hands)
-    decrease_ticket_holder_primary_market(deps.storage, &info.sender, number_of_tickets)?;
+    // decrease_ticket_holder_primary_market(deps.storage, &info.sender, number_of_tickets)?;
     increment_tickets_burned(deps.storage, number_of_tickets)?;
     update_claim(deps.storage, &info.sender, refund_amount)?;
 
