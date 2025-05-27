@@ -1,19 +1,19 @@
 #!/bin/bash
 
 # Set the contract address and the number of tickets to buy
-CONTRACT_ADDRESS="testcore190mwus5wkung2wvku60hnvu0p2h4nvwutms67n5tyrysu35cejwq3cjwad"
-NUMBER_OF_TICKETS="4"
-PRICE="200000000"
+CONTRACT_ADDRESS="core1evlgj0xvqtnpw5ejzvucgsmuy6a6sfd9f94a0tw89pc5f3hwkkksan5c9t"
+NUMBER_OF_TICKETS="1"
+PRICE="5000000ucore"
 AMOUNT=$((PRICE * NUMBER_OF_TICKETS))
 
 # Send the buy ticket message
 cored tx wasm execute $CONTRACT_ADDRESS '{"buy_ticket":{"number_of_tickets":"'$NUMBER_OF_TICKETS'"}}' \
-    --from ebc-poa-mainnet \
-    --chain-id coreum-testnet-1 \
-    --node https://coreum-testnet-rpc.ibs.team/ \
+    --from dex \
+    --chain-id coreum-mainnet-1 \
+    --node https://coreum-rpc.ibs.team/ \
     --gas auto --gas-adjustment 1.3 \
-    --fees 3000000utestcore \
-    --amount 800000000utestcore \
+    --fees 30000ucore \
+    --amount $PRICE \
     -y
 
 # Print the transaction hash

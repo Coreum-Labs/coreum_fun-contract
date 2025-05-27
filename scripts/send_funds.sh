@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Set the contract address and the recipient address
-CONTRACT_ADDRESS="testcore190mwus5wkung2wvku60hnvu0p2h4nvwutms67n5tyrysu35cejwq3cjwad"
+CONTRACT_ADDRESS="testcore19zsn4cmtqzxlegkdg6vn62ptsk40q9ssnynetemjxec2q3mllhgq9h2ehn"
 RECIPIENT_ADDRESS="testcore1zgdprlr3hz5hhke9ght8mq723a8wlnzqcepjcd"
 AMOUNT="10000000"
 

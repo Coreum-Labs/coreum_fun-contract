@@ -1,12 +1,12 @@
 
-CONTRACT_ADDRESS="testcore190mwus5wkung2wvku60hnvu0p2h4nvwutms67n5tyrysu35cejwq3cjwad"
+CONTRACT_ADDRESS="core1pkdpdj05g5xjvq98qxlyt6faz2p7d7vhughrnrqelu6ue3eakeaseux75g"
 
 cored tx wasm execute $CONTRACT_ADDRESS '{"send_funds_to_winner":{}}' \
-    --from dex \
-    --chain-id coreum-testnet-1 \
-    --node https://coreum-testnet-rpc.ibs.team/ \
+    --from coreum_fun \
+    --chain-id coreum-mainnet-1 \
+    --node https://coreum-rpc.ibs.team/ \
     --gas auto --gas-adjustment 1.3 \
-    --fees 3000000utestcore \
+    --fees 300000ucore \
     -y
 
 # Print the transaction hash
